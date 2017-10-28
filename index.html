@@ -111,19 +111,19 @@
                 // Do diffuse lighting
                 diffuse +=  max(0.0, dot(toLight, n));
                 // Do specular lighting
-                specular += max(0.0, pow(dot(ref, toEye), kSpec));
+                specular += pow(max(dot(ref, toEye), 0.0), kSpec);
 
                 // Recompute for second light
                 toLight = normalize(light2 - p);
                 ref = normalize(reflection(toLight, n));
                 diffuse += max(0.0, dot(toLight, ref));
-                specular += max(0.0, pow(dot(ref, toEye), kSpec));
+                specular += pow(max(dot(ref, toEye), 0.0), kSpec);
 
                 // Recompute for third light
                 toLight = normalize(light3 - p);
                 ref = normalize(reflection(toLight, n));
                 diffuse += max(0.0, dot(toLight, ref));
-                specular += max(0.0, pow(dot(ref, toEye), kSpec));
+                specular += pow(max(dot(ref, toEye), 0.0), kSpec);
 
                 return specWeight * specular + diffWeight * diffuse;
             }
