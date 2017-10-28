@@ -34,7 +34,8 @@
             #define FREQ 10.0
             #define AMP 0.05
             #define OVERSTEP 4.0
-            #define IOR 1.33
+            #define AIR_IOR 1.0
+            #define WATER_IOR 1.33
 
             uniform float time;
             uniform vec2 resolution;
@@ -127,6 +128,14 @@
                 return specWeight * specular + diffWeight * diffuse;
             }
 
+			vec3 getRefractedDir(vec3 dir, vec3 n)
+			{
+				float costheta = dot(dir, -n);
+				float ratio = AIR_IOR / WATER_IOR;
+				float c = ratio * ratio * (1.0 - costheta * costheta);
+				return ratio * dir + (ratio * costheta - sqrt(1.0 - c)) * n;
+			}
+
             vec4 shadeWall(vec3 eye, vec3 p, vec3 normal)
             {
                 return intensity(eye, p, normal, 0.0, 0.0, 1.0) * getWallColor(p);
@@ -180,11 +189,13 @@
                     return;
                 }
 
+                hitBox = false;
                 // If the part we hit is below the surface
                 if (p.y < height(p))
                 {
                     surfaceColor = shadeWater(eye, p, getBoxNormal(p));
                     hitSurface = true;
+                    hitBox = true;
                 }
                 // If the part we hit is above the surface
                 else
@@ -210,6 +221,8 @@
                         p += dir * STEPSIZE;
                     }
                 }
+
+                dir = getRefractedDir(dir, hitBox ? getBoxNormal(p) : getSurfaceNormal(p));
 
                 // Step out of the box and step backwards until we hit it
                 p += OVERSTEP * dir;
