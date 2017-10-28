@@ -47,7 +47,7 @@
 
 			vec3 light1 = vec3(2.0, 2.0, 2.0);
 			vec3 light2 = vec3(-2.0, 2.0, -2.0);
-			vec3 light3 = vec3(0.0, 2.0, 0.0);
+			vec3 light3 = vec3(0.0, 1.0, 0.0);
 
 			float distBox(vec3 p)
 			{
@@ -103,37 +103,44 @@
 				return -v + 2.0 * dot(v, n) * n;
 			}
 
-			float intensity(vec3 eye, vec3 p, vec3 n)
+			float intensity(vec3 eye, vec3 p, vec3 n,
+							float kSpec, float specWeight, float diffWeight)
 			{
-				float intensity = 0.0;
-
 				vec3 toLight = normalize(light1 - p);
 				vec3 toEye = normalize(eye - p);
 				vec3 ref = normalize(reflection(toLight, n));
 
+				float diffuse = 0.0;
+				float specular = 0.0;
+
 				// Do diffuse lighting
-				intensity += 0.25 * max(0.0, dot(toLight, n));
+				diffuse +=  max(0.0, dot(toLight, n));
 				// Do specular lighting
-				intensity += max(0.0, pow(dot(ref, toEye), 3.0));
+				specular += max(0.0, pow(dot(ref, toEye), kSpec));
 
 				// Recompute for second light
 				toLight = normalize(light2 - p);
 				ref = normalize(reflection(toLight, n));
-				intensity += 0.25 * max(0.0, dot(toLight, n));
-				intensity += max(0.0, pow(dot(ref, toEye), 3.0));
+				diffuse += max(0.0, dot(toLight, ref));
+				specular += max(0.0, pow(dot(ref, toEye), kSpec));
 
 				// Recompute for third light
 				toLight = normalize(light3 - p);
 				ref = normalize(reflection(toLight, n));
-				intensity += 0.25 * max(0.0, dot(toLight, n));
-				intensity += max(0.0, pow(dot(ref, toEye), 3.0));
+				diffuse += max(0.0, dot(toLight, ref));
+				specular += max(0.0, pow(dot(ref, toEye), kSpec));
 
-				return intensity;
+				return specWeight * specular + diffWeight * diffuse;
 			}
 
-			vec4 shade(vec3 eye, vec3 p, vec3 normal)
+			vec4 shadeWall(vec3 eye, vec3 p, vec3 normal)
 			{
-				return intensity(eye, p, normal) * vec4(0.6, 0.6, 0.6, 1.0);
+				return intensity(eye, p, normal, 0.0, 0.0, 1.0) * getWallColor(p);
+			}
+
+			vec4 shadeWater(vec3 eye, vec3 p, vec3 normal)
+			{
+				return intensity(eye, p, normal, 15.0, 2.5, 0.0) * vec4(1.0);
 			}
 
 			void main()
@@ -182,7 +189,7 @@
 				// If the part we hit is below the surface
 				if (p.y < height(p))
 				{
-					surfaceColor = shade(eye, p, getBoxNormal(p));
+					surfaceColor = shadeWater(eye, p, getBoxNormal(p));
 					hitSurface = true;
 				}
 				// If the part we hit is above the surface
@@ -194,7 +201,7 @@
 						if (p.y < height(p))
 						{
 							hitSurface = true;
-							surfaceColor = shade(eye, p, getSurfaceNormal(p));
+							surfaceColor = shadeWater(eye, p, getSurfaceNormal(p));
 							break;
 						}
 
@@ -222,7 +229,7 @@
 					p -= dir * d;
 				}
 
-				vec4 wallColor = getWallColor(p) * intensity(eye, p, -getBoxNormal(p));
+				vec4 wallColor = shadeWall(eye, p, -getBoxNormal(p));
 				gl_FragColor = 0.3 * surfaceColor + 0.5 * wallColor;
 			}
 		</script>
