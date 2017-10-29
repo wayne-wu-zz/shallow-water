@@ -261,11 +261,32 @@
             uniform vec2 resolution;
             uniform sampler2D sampler;
 
+            vec4 sample(vec2 uv)
+            {
+                if (uv.x < 0.0 || uv.x > 1.0 || uv.y < 0.0 || uv.y > 1.0)
+                {
+                    return vec4(0.0);
+                }
+                return texture2D(sampler, uv);
+            }
+
             void main()
             {
-                float u = gl_FragCoord.x / resolution.x;
-                float v = gl_FragCoord.y / resolution.y;
-                gl_FragColor = texture2D(sampler, vec2(u, v)) * 0.99;
+                vec2 EPS = vec2(0.01, 0);
+                vec2 uv = gl_FragCoord.xy / resolution.xy;
+                vec4 U = sample(uv);
+
+                vec4 Uxf = sample(uv + EPS.xy);
+                vec4 Uxb = sample(uv - EPS.xy);
+                vec4 Uxx = (Uxf - 2.0 * U + Uxb) / (EPS.x * EPS.x);
+
+                vec4 Uyf = sample(uv + EPS.yx);
+                vec4 Uyb = sample(uv - EPS.yx);
+                vec4 Uyy = (Uyf - 2.0 * U + Uyb) / (EPS.x * EPS.x);
+
+                float dt = EPS.x * EPS.x * 0.2;
+
+                gl_FragColor = U + dt * (Uyy + Uxx);
             }
     </script>
     <script>
@@ -392,20 +413,22 @@
 
             function initFrameBuffers()
             {
+                width = 200;
+                height = 200;
                 heightFrameBuffer0 = gl.createFramebuffer();
                 gl.bindFramebuffer(gl.FRAMEBUFFER, heightFrameBuffer0);
-                heightFrameBuffer0.width = 200;
-                heightFrameBuffer0.height = 200;
+                heightFrameBuffer0.width = width;
+                heightFrameBuffer0.height = height;
 
-                heightTexture0 = loadFloatTexture(gl, 200, 200);
+                heightTexture0 = loadFloatTexture(gl, width, height);
                 gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, heightTexture0, 0);
 
                 heightFrameBuffer1 = gl.createFramebuffer();
                 gl.bindFramebuffer(gl.FRAMEBUFFER, heightFrameBuffer1);
-                heightFrameBuffer1.width = 200;
-                heightFrameBuffer1.height = 200;
+                heightFrameBuffer1.width = width;
+                heightFrameBuffer1.height = height;
 
-                heightTexture1 = loadFloatTexture(gl, 200, 200);
+                heightTexture1 = loadFloatTexture(gl, width, height);
                 gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, heightTexture1, 0);
 
                 gl.bindTexture(gl.TEXTURE_2D, null);
@@ -483,11 +506,12 @@
                 {
                     for (var j = 0; j < h; j++)
                     {
-                        var x = (i / (h * 1.0));
-                        var z = (j / (w * 1.0));
+                        var x = (i / (h * 0.5)) - 1.0;
+                        var z = (j / (w * 0.5)) - 1.0;
+                        var t = x * x + z * z;
                         heightMap[(i * w + j) * 4 + 0] = 0.0;
                         heightMap[(i * w + j) * 4 + 1] = 0.0;
-                        heightMap[(i * w + j) * 4 + 2] = x * x + z * z;
+                        heightMap[(i * w + j) * 4 + 2] = 0.5 * Math.exp(-t) * Math.sin(10.0 * t);
                         heightMap[(i * w + j) * 4 + 3] = 0.0;
                     }
                 }   
