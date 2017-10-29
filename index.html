@@ -41,6 +41,7 @@
             uniform vec2 resolution;
             uniform sampler2D heightSampler;
             uniform sampler2D wallSampler;
+            uniform vec3 eyeCoordinate;
 
             vec3 light1 = vec3(2.0, 2.0, 2.0);
             vec3 light2 = vec3(-2.0, 2.0, -2.0);
@@ -161,10 +162,23 @@
                 return intensity(eye, p, normal, 50.0, 2.0, 0.0) * vec4(1.0);
             }
 
+            vec3 getCartesian(vec3 sphericalCoord)
+            {
+                float radius = sphericalCoord.x;
+                float phi = sphericalCoord.y;
+                float theta = sphericalCoord.z;
+                return vec3(
+                    radius * sin(phi) * cos(theta),
+                    radius * cos(phi),
+                    radius * sin(phi) * sin(theta)
+                );
+            }
+        
             void main()
             {
                 //vec3 eye = 3.0 * vec3(1.0);
-                vec3 eye = 3.0 * vec3(sin(time), 1.0, cos(time));
+                //vec3 eye = 3.0 * vec3(sin(time), 1.0, cos(time));
+                vec3 eye = getCartesian(eyeCoordinate);
                 vec3 focus = vec3(0, 0, 0);
                 vec3 forward = normalize(focus - eye);
                 vec3 right = cross(forward, vec3(0.0, 1.0, 0.0));
@@ -371,6 +385,19 @@
                 initRenderProgram();
 
                 wallTexture = loadTexture(gl, "tiles.jpg");
+
+                canvas.onmousedown = handleMouseDown;
+                canvas.onmousemove = handleMouseMove;
+                canvas.onmouseup = handleMouseUp;
+
+                mousedown = false;
+                mouseDownX = null;
+                mouseDownY = null;
+                eyeCoordinate = {
+                    radius : 3,
+                    phi : 0.785, 
+                    theta : 0.785
+                };
             }
 
             function initRenderProgram()
@@ -381,6 +408,7 @@
                     ,resolutionLocation : gl.getUniformLocation(renderProgram, 'resolution')
                     ,heightSamplerLocation : gl.getUniformLocation(renderProgram, 'heightSampler')
                     ,wallSamplerLocation : gl.getUniformLocation(renderProgram, 'wallSampler')
+                    ,eyeCoordinate : gl.getUniformLocation(renderProgram, 'eyeCoordinate')
                 };
             }
 
@@ -558,6 +586,36 @@
                 }
             }
 
+            function handleMouseDown(event)
+            {
+                mousedown = true;
+                mouseDownX = event.clientX;
+                mouseDownY = event.clientY;
+            }
+
+            function handleMouseUp(event)
+            {
+                mousedown = false;
+            }
+
+            function handleMouseMove(event)
+            {
+                if (!mousedown)
+                {
+                    return;
+                }
+
+                var currentX = event.clientX;
+                var currentY = event.clientY;
+                var deltaX = currentX - mouseDownX;
+                var deltaY = currentY - mouseDownY;
+                eyeCoordinate.theta += (deltaX/10)/180 * Math.PI;
+                eyeCoordinate.phi += (-deltaY/10)/180 * Math.PI; 
+
+                mouseDownY = currentY;
+                mouseDownX = currentX;
+            }
+
             function animate()
             {
                 resizeCanvas();
@@ -574,8 +632,6 @@
                 // First Draw Call: Compute Height Field
                 gl.useProgram(heightProgram);              
                 gl.bindFramebuffer(gl.FRAMEBUFFER, heightFrameBuffer);
-                gl.activeTexture(gl.TEXTURE0);
-                gl.bindTexture(gl.TEXTURE_2D, heightTexture);
 
                 gl.viewport(0, 0, heightFrameBuffer.width, heightFrameBuffer.height);
                 gl.uniform1f(heightUniforms.timeLocation, parameters.time / 1000);
@@ -604,6 +660,7 @@
                 gl.uniform2f(renderUniforms.resolutionLocation, parameters.screenWidth, parameters.screenHeight);
                 gl.uniform1i(renderUniforms.heightSamplerLocation, 0);
                 gl.uniform1i(renderUniforms.wallSamplerLocation, 1);
+                gl.uniform3f(renderUniforms.eyeCoordinate, eyeCoordinate.radius, eyeCoordinate.phi, eyeCoordinate.theta);
 
                 // Render geometry
                 gl.bindBuffer(gl.ARRAY_BUFFER, buffer);
