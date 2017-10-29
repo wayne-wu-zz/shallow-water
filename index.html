@@ -263,7 +263,7 @@
             float sinusoid(float x, float z)
             {
                 float t = x * x * sin(time) + z * z * cos(time);
-                return 0.1 * exp(-t) * cos(20.0 * t);
+                return 0.05 * exp(-t) * cos(20.0 * t);
             }
             
             void main()
@@ -370,7 +370,7 @@
                 initHeightProgram();
                 initRenderProgram();
 
-                wallTexture = loadTexture(gl, "testpic.jpg");
+                wallTexture = loadTexture(gl, "tiles.jpg");
             }
 
             function initRenderProgram()
