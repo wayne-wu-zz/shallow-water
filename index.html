@@ -257,9 +257,20 @@
             }
     </script>
     <script id="fs1" type="x-shader/fragment">
+            uniform float time;
+            uniform vec2 resolution;
+        
+            float sinusoid(float x, float z)
+            {
+                float t = x * x * sin(time) + z * z * cos(time);
+                return 0.1 * exp(-t) * cos(20.0 * t);
+            }
+            
             void main()
             {
-
+                float u = gl_FragCoord.x * 2.0 / resolution.x - 1.0;
+                float v = gl_FragCoord.y * 2.0 / resolution.y - 1.0;
+                gl_FragColor = vec4(0.0, 0.0, sinusoid(u, v), 0.0);
             }
     </script>
     <script>
@@ -277,8 +288,9 @@
             var canvas
                 , gl
                 , buffer
-                , vertex_shader, fragment_shader
-                , currentProgram
+                , vertex_shader, fragment_shader, heightfield_shader
+                , heightProgram
+                , renderProgram
                 , vertex_position
                 , timeLocation
                 , resolutionLocation
@@ -328,6 +340,7 @@
             {
                 vertex_shader = document.getElementById('vs').textContent;
                 fragment_shader = document.getElementById('fs0').textContent;
+                heightfield_shader = document.getElementById('fs1').textContent;
                 canvas = document.querySelector('canvas');
 
                 // Initialise WebGL
@@ -350,15 +363,47 @@
                 gl.bindBuffer(gl.ARRAY_BUFFER, buffer);
                 gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1.0, -1.0, 1.0, -1.0, -1.0, 1.0, 1.0, -1.0, 1.0, 1.0, -1.0, 1.0]), gl.STATIC_DRAW);
 
-                // Create Program
-                currentProgram = createProgram(vertex_shader, fragment_shader);
-                timeLocation = gl.getUniformLocation(currentProgram, 'time');
-                resolutionLocation = gl.getUniformLocation(currentProgram, 'resolution');
-                heightSamplerLocation = gl.getUniformLocation(currentProgram, 'heightSampler');
-                wallSamplerLocation = gl.getUniformLocation(currentProgram, 'wallSampler')
+                // Create Frame Buffer for storing the height field
+                initFrameBuffer();
 
-                heightTexture = loadFloatTexture(gl);
+                // Create Programs
+                initHeightProgram();
+                initRenderProgram();
+
                 wallTexture = loadTexture(gl, "testpic.jpg");
+            }
+
+            function initRenderProgram()
+            {
+                renderProgram = createProgram(vertex_shader, fragment_shader);
+                renderUniforms = {
+                    timeLocation : gl.getUniformLocation(renderProgram, 'time')
+                    ,resolutionLocation : gl.getUniformLocation(renderProgram, 'resolution')
+                    ,heightSamplerLocation : gl.getUniformLocation(renderProgram, 'heightSampler')
+                    ,wallSamplerLocation : gl.getUniformLocation(renderProgram, 'wallSampler')
+                };
+            }
+
+            function initHeightProgram()
+            {
+                heightProgram = createProgram(vertex_shader, heightfield_shader);
+                heightUniforms = {
+                    timeLocation : gl.getUniformLocation(heightProgram, 'time')
+                    ,resolutionLocation : gl.getUniformLocation(heightProgram, 'resolution')
+                }
+            }
+
+            function initFrameBuffer()
+            {
+                heightFrameBuffer = gl.createFramebuffer(); 
+                gl.bindFramebuffer(gl.FRAMEBUFFER, heightFrameBuffer);
+                heightFrameBuffer.width = 256;
+                heightFrameBuffer.height = 256;
+
+                heightTexture = loadEmptyTexture(gl);
+                gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, heightTexture, 0);
+                gl.bindTexture(gl.TEXTURE_2D, null);
+                gl.bindFramebuffer(gl.FRAMEBUFFER, null);
             }
 
             function createProgram(vertex, fragment)
@@ -398,6 +443,25 @@
                     return null;
                 }
                 return shader;
+            }
+
+            function loadEmptyTexture(gl)
+            {
+                const texture = gl.createTexture();
+                gl.bindTexture(gl.TEXTURE_2D, texture);
+                gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, heightFrameBuffer.width, heightFrameBuffer.height, 0, 
+                            gl.RGBA, gl.FLOAT, null);
+                if (isPowerOf2(heightFrameBuffer.width) && isPowerOf2(heightFrameBuffer.height)) 
+                {
+                    gl.generateMipmap(gl.TEXTURE_2D);
+                } 
+                else 
+                {
+                    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+                    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+                    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+                }
+                return texture;
             }
 
             function loadFloatTexture(gl)
@@ -502,24 +566,43 @@
 
             function render()
             {
-                if (!currentProgram) return;
+                if (!renderProgram) return;
                 parameters.time = new Date().getTime() - parameters.start_time;
                 gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
 
-                // Load program into GPU
-                gl.useProgram(currentProgram);
-
+                // First Draw Call: Compute Height Field
+                gl.useProgram(heightProgram);              
+                gl.bindFramebuffer(gl.FRAMEBUFFER, heightFrameBuffer);
                 gl.activeTexture(gl.TEXTURE0);
                 gl.bindTexture(gl.TEXTURE_2D, heightTexture);
 
+                gl.viewport(0, 0, heightFrameBuffer.width, heightFrameBuffer.height);
+                gl.uniform1f(heightUniforms.timeLocation, parameters.time / 1000);
+                gl.uniform2f(heightUniforms.resolutionLocation, heightFrameBuffer.width, heightFrameBuffer.height);
+
+                gl.bindBuffer(gl.ARRAY_BUFFER, buffer); 
+                gl.vertexAttribPointer(vertex_position, 2, gl.FLOAT, false, 0, 0);
+                gl.enableVertexAttribArray(vertex_position);
+                gl.drawArrays(gl.TRIANGLES, 0, 6);
+                gl.disableVertexAttribArray(vertex_position);
+
+                gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+
+                // Second Draw Call: Render
+                gl.useProgram(renderProgram);
+
+                gl.activeTexture(gl.TEXTURE0);
+                gl.bindTexture(gl.TEXTURE_2D, heightTexture);
                 gl.activeTexture(gl.TEXTURE1);
                 gl.bindTexture(gl.TEXTURE_2D, wallTexture);
+                
+                gl.viewport(0, 0, parameters.screenWidth, parameters.screenHeight);
 
                 // Set values to program variables
-                gl.uniform1f(timeLocation, parameters.time / 1000);
-                gl.uniform2f(resolutionLocation, parameters.screenWidth, parameters.screenHeight);
-                gl.uniform1i(heightSamplerLocation, 0);
-                gl.uniform1i(wallSamplerLocation, 1);
+                gl.uniform1f(renderUniforms.timeLocation, parameters.time / 1000);
+                gl.uniform2f(renderUniforms.resolutionLocation, parameters.screenWidth, parameters.screenHeight);
+                gl.uniform1i(renderUniforms.heightSamplerLocation, 0);
+                gl.uniform1i(renderUniforms.wallSamplerLocation, 1);
 
                 // Render geometry
                 gl.bindBuffer(gl.ARRAY_BUFFER, buffer);
