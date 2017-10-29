@@ -265,7 +265,7 @@
                 float t = x * x * sin(time) + z * z * cos(time);
                 return 0.05 * exp(-t) * cos(20.0 * t);
             }
-            
+
             void main()
             {
                 float u = gl_FragCoord.x * 2.0 / resolution.x - 1.0;
@@ -465,22 +465,22 @@
                 return texture;
             }
 
-            function loadFloatTexture(gl)
+            function loadFloatTexture(gl, w, h)
             {
                 const texture = gl.createTexture();
                 gl.bindTexture(gl.TEXTURE_2D, texture);
 
-                const w = 100;
-                const h = 100;
                 var heightMap = new Float32Array(w * h * 4);
 
                 for (var i = 0; i < w; i++)
                 {
                     for (var j = 0; j < h; j++)
                     {
+                        var x = (i / (float (h)));
+                        var z = (j / (float (w)));
                         heightMap[(i * w + j) * 4 + 0] = 0.0;
                         heightMap[(i * w + j) * 4 + 1] = 0.0;
-                        heightMap[(i * w + j) * 4 + 2] = (i/100.0)*(i/100.0) + (j/100.0)*(j/100.0);
+                        heightMap[(i * w + j) * 4 + 2] = x * x + z * z;
                         heightMap[(i * w + j) * 4 + 3] = 0.0;
                     }
                 }   
