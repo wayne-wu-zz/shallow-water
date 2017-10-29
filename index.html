@@ -259,18 +259,13 @@
     <script id="fs1" type="x-shader/fragment">
             uniform float time;
             uniform vec2 resolution;
-        
-            float sinusoid(float x, float z)
-            {
-                float t = x * x * sin(time) + z * z * cos(time);
-                return 0.05 * exp(-t) * cos(20.0 * t);
-            }
+            uniform sampler2D sampler;
 
             void main()
             {
-                float u = gl_FragCoord.x * 2.0 / resolution.x - 1.0;
-                float v = gl_FragCoord.y * 2.0 / resolution.y - 1.0;
-                gl_FragColor = vec4(0.0, 0.0, sinusoid(u, v), 0.0);
+                float u = gl_FragCoord.x / resolution.x;
+                float v = gl_FragCoord.y / resolution.y;
+                gl_FragColor = texture2D(sampler, vec2(u, v)) * 0.99;
             }
     </script>
     <script>
@@ -294,6 +289,7 @@
                 , vertex_position
                 , timeLocation
                 , resolutionLocation
+                , frame
                 , parameters = {
                     start_time: new Date().getTime()
                     , time: 0
@@ -364,7 +360,7 @@
                 gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1.0, -1.0, 1.0, -1.0, -1.0, 1.0, 1.0, -1.0, 1.0, 1.0, -1.0, 1.0]), gl.STATIC_DRAW);
 
                 // Create Frame Buffer for storing the height field
-                initFrameBuffer();
+                initFrameBuffers();
 
                 // Create Programs
                 initHeightProgram();
@@ -390,20 +386,31 @@
                 heightUniforms = {
                     timeLocation : gl.getUniformLocation(heightProgram, 'time')
                     ,resolutionLocation : gl.getUniformLocation(heightProgram, 'resolution')
+                    ,samplerLocation : gl.getUniformLocation(heightProgram, 'sampler')
                 }
             }
 
-            function initFrameBuffer()
+            function initFrameBuffers()
             {
-                heightFrameBuffer = gl.createFramebuffer(); 
-                gl.bindFramebuffer(gl.FRAMEBUFFER, heightFrameBuffer);
-                heightFrameBuffer.width = 200;
-                heightFrameBuffer.height = 200;
+                heightFrameBuffer0 = gl.createFramebuffer();
+                gl.bindFramebuffer(gl.FRAMEBUFFER, heightFrameBuffer0);
+                heightFrameBuffer0.width = 200;
+                heightFrameBuffer0.height = 200;
 
-                heightTexture = loadEmptyTexture(gl);
-                gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, heightTexture, 0);
+                heightTexture0 = loadFloatTexture(gl, 200, 200);
+                gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, heightTexture0, 0);
+
+                heightFrameBuffer1 = gl.createFramebuffer();
+                gl.bindFramebuffer(gl.FRAMEBUFFER, heightFrameBuffer1);
+                heightFrameBuffer1.width = 200;
+                heightFrameBuffer1.height = 200;
+
+                heightTexture1 = loadFloatTexture(gl, 200, 200);
+                gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, heightTexture1, 0);
+
                 gl.bindTexture(gl.TEXTURE_2D, null);
                 gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+                frame = 0;
             }
 
             function createProgram(vertex, fragment)
@@ -449,9 +456,9 @@
             {
                 const texture = gl.createTexture();
                 gl.bindTexture(gl.TEXTURE_2D, texture);
-                gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, heightFrameBuffer.width, heightFrameBuffer.height, 0, 
+                gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, heightFrameBuffer0.width, heightFrameBuffer0.height, 0,
                             gl.RGBA, gl.FLOAT, null);
-                if (isPowerOf2(heightFrameBuffer.width) && isPowerOf2(heightFrameBuffer.height)) 
+                if (isPowerOf2(heightFrameBuffer0.width) && isPowerOf2(heightFrameBuffer0.height))
                 {
                     gl.generateMipmap(gl.TEXTURE_2D);
                 } 
@@ -476,8 +483,8 @@
                 {
                     for (var j = 0; j < h; j++)
                     {
-                        var x = (i / (float (h)));
-                        var z = (j / (float (w)));
+                        var x = (i / (h * 1.0));
+                        var z = (j / (w * 1.0));
                         heightMap[(i * w + j) * 4 + 0] = 0.0;
                         heightMap[(i * w + j) * 4 + 1] = 0.0;
                         heightMap[(i * w + j) * 4 + 2] = x * x + z * z;
@@ -572,16 +579,26 @@
                 gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
 
                 // First Draw Call: Compute Height Field
-                gl.useProgram(heightProgram);              
-                gl.bindFramebuffer(gl.FRAMEBUFFER, heightFrameBuffer);
+                gl.useProgram(heightProgram);
+                // Set which buffer to write to
+                if (frame == 0)
+                    gl.bindFramebuffer(gl.FRAMEBUFFER, heightFrameBuffer0);
+                if (frame == 1)
+                    gl.bindFramebuffer(gl.FRAMEBUFFER, heightFrameBuffer1);
+
+                // Set which texture to read from
                 gl.activeTexture(gl.TEXTURE0);
-                gl.bindTexture(gl.TEXTURE_2D, heightTexture);
+                if (frame == 0)
+                    gl.bindTexture(gl.TEXTURE_2D, heightTexture1);
+                if (frame == 1)
+                    gl.bindTexture(gl.TEXTURE_2D, heightTexture0);
 
-                gl.viewport(0, 0, heightFrameBuffer.width, heightFrameBuffer.height);
+                gl.viewport(0, 0, heightFrameBuffer0.width, heightFrameBuffer0.height);
                 gl.uniform1f(heightUniforms.timeLocation, parameters.time / 1000);
-                gl.uniform2f(heightUniforms.resolutionLocation, heightFrameBuffer.width, heightFrameBuffer.height);
+                gl.uniform2f(heightUniforms.resolutionLocation, heightFrameBuffer0.width, heightFrameBuffer0.height);
+                gl.uniform1i(heightUniforms.samplerLocation, 0);
 
-                gl.bindBuffer(gl.ARRAY_BUFFER, buffer); 
+                gl.bindBuffer(gl.ARRAY_BUFFER, buffer);
                 gl.vertexAttribPointer(vertex_position, 2, gl.FLOAT, false, 0, 0);
                 gl.enableVertexAttribArray(vertex_position);
                 gl.drawArrays(gl.TRIANGLES, 0, 6);
@@ -593,7 +610,10 @@
                 gl.useProgram(renderProgram);
 
                 gl.activeTexture(gl.TEXTURE0);
-                gl.bindTexture(gl.TEXTURE_2D, heightTexture);
+                if (frame == 0)
+                    gl.bindTexture(gl.TEXTURE_2D, heightTexture0);
+                if (frame == 1)
+                    gl.bindTexture(gl.TEXTURE_2D, heightTexture1);
                 gl.activeTexture(gl.TEXTURE1);
                 gl.bindTexture(gl.TEXTURE_2D, wallTexture);
                 
@@ -611,6 +631,8 @@
                 gl.enableVertexAttribArray(vertex_position);
                 gl.drawArrays(gl.TRIANGLES, 0, 6);
                 gl.disableVertexAttribArray(vertex_position);
+
+                frame = (frame + 1) % 2;
             }
 
     </script>
