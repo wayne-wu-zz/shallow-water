@@ -31,7 +31,7 @@
             #define EPS 0.01
             #define STEPSIZE 0.01
             #define MAXSTEPS 1000
-            #define FREQ 10.0
+            #define FREQ 20.0
             #define AMP 0.05
             #define OVERSTEP 4.0
             #define AIR_IOR 1.0
@@ -397,8 +397,8 @@
             {
                 heightFrameBuffer = gl.createFramebuffer(); 
                 gl.bindFramebuffer(gl.FRAMEBUFFER, heightFrameBuffer);
-                heightFrameBuffer.width = 256;
-                heightFrameBuffer.height = 256;
+                heightFrameBuffer.width = 200;
+                heightFrameBuffer.height = 200;
 
                 heightTexture = loadEmptyTexture(gl);
                 gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, heightTexture, 0);
@@ -460,6 +460,7 @@
                     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
                     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
                     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+                    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR)
                 }
                 return texture;
             }
