@@ -406,6 +406,7 @@
                 canvas.onmousedown = handleMouseDown;
                 canvas.onmousemove = handleMouseMove;
                 canvas.onmouseup = handleMouseUp;
+                canvas.onwheel = handleWheelScroll;
 
                 mousedown = false;
                 mouseDownX = null;
@@ -645,6 +646,15 @@
 
                 mouseDownY = currentY;
                 mouseDownX = currentX;
+            }
+
+            function handleWheelScroll(event)
+            {
+                var new_radius = eyeCoordinate.radius + event.deltaY/100;
+                if (new_radius > 0.0)
+                {
+                    eyeCoordinate.radius = new_radius;
+                }
             }
 
             function animate()
