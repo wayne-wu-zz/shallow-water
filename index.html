@@ -307,7 +307,7 @@
             }
     </script>
     <script id="fs2" type="x-shader/fragment">
-            #define TIMESTEP 0.0005
+            #define TIMESTEP 0.01
             #define H 1.0/100.0
         
             uniform float time;
@@ -376,8 +376,8 @@
             }
     </script> 
     <script id="fs3" type="x-shader/fragment">
-            #define TIMESTEP 0.0005
-            #define G -1.0
+            #define TIMESTEP 0.01
+            #define G -10.0
             #define H 1.0/100.0
         
             uniform vec2 resolution;
@@ -447,14 +447,40 @@
                 vec4 Uzf = sample(uv + eps.yx);
                 vec4 Uzb = sample(uv - eps.yx);
 
-                float u = G * TIMESTEP * cenDiff(Uxf.z, Uxb.z, eps.x) + U.x;
-                float w = G * TIMESTEP * cenDiff(Uzf.z, Uzb.z, eps.x) + U.y;
+                // Compute velocities at the faces
+                vec4 n = sample(uv + eps.yx);
+                vec4 s = sample(uv - eps.yx);
+                vec4 e = sample(uv + eps.xy);
+                vec4 w = sample(uv - eps.xy);
+                vec2 avgn = (n.xy + U.xy) * 0.5;
+                vec2 avgs = (s.xy + U.xy) * 0.5;
+                vec2 avge = (e.xy + U.xy) * 0.5;
+                vec2 avgw = (w.xy + U.xy) * 0.5;
+
+                // Compute pressures at the corners
+                float pne = sample(uv + eps.xx * 0.5).z;
+                float pnw = sample(uv - eps.xy * 0.5 + eps.yx * 0.5).z;
+                float pse = sample(uv + eps.xy * 0.5 - eps.yx * 0.5).z;
+                float psw = sample(uv - eps.xx * 0.5).z;
+
+                // Compute pressure gradients at faces
+                vec2 pgn = vec2(pne - pnw, n.z - U.z) / H;
+                vec2 pgs = vec2(pse - psw, U.z - s.z) / H;
+                vec2 pge = vec2(e.z - U.z, pne - pse) / H;
+                vec2 pgw = vec2(U.z - w.z, pnw - psw) / H;
+
+                avgn += TIMESTEP * G * pgn;
+                avgs += TIMESTEP * G * pgs;
+                avge += TIMESTEP * G * pge;
+                avgw += TIMESTEP * G * pgw;
+
+                vec2 vel = (avgn + avgs + avge + avgw) * 0.25;
 
                 float dudx = cenDiff(Uxf.x, Uxb.x, eps.x);
                 float dwdz = cenDiff(Uzf.y, Uzb.y, eps.x);
                 float h = U.z - TIMESTEP * U.z * (dudx + dwdz);
                 
-                gl_FragColor = vec4(u, w, h, 0.0);
+                gl_FragColor = vec4(vel, h, 0.0);
             }
     </script>
     <script>
@@ -703,9 +729,9 @@
                         var x = (i / (h * 0.5)) - 1.0;
                         var z = (j / (w * 0.5)) - 1.0;
                         var t = x * x + z * z;
-                        heightMap[(i * w + j) * 4 + 0] = 0.1;
-                        heightMap[(i * w + j) * 4 + 1] = 0.1;
-                        heightMap[(i * w + j) * 4 + 2] = 0.05 * Math.exp(-t) * Math.sin(10.0 * t);
+                        heightMap[(i * w + j) * 4 + 0] = Math.cos(x);
+                        heightMap[(i * w + j) * 4 + 1] = Math.sin(z);
+                        heightMap[(i * w + j) * 4 + 2] = 0.1 * Math.exp(-t) * Math.sin(10.0 * t);
                         heightMap[(i * w + j) * 4 + 3] = 0.0;
                     }
                 }   
