@@ -307,24 +307,58 @@
             }
     </script>
     <script id="fs2" type="x-shader/fragment">
-            #define TIMESTEP 0.0001
+            #define TIMESTEP 0.0005
+            #define H 1.0/100.0
         
             uniform float time;
             uniform vec2 resolution;
             uniform sampler2D sampler;
 
+            vec4 lerp(vec4 a, vec4 b, float t)
+            {
+            	return (1.0 - t) * a + t * b;
+            }
+
             vec4 sample(vec2 uv)
             {
-                vec4 raw = texture2D(sampler, uv);
-                if (uv.x < 0.0 || uv.x > 1.0)
+            	vec4 result;
+                if (uv.x < 0.0 && uv.x >= -H)
                 {
-                    raw.x *= -1.0;
+                    vec4 U = texture2D(sampler, vec2(0.0, uv.y));
+                    vec4 V = vec4(-1.0, -1.0, 1.0, 0.0) * U;
+                    float s = -uv.x;
+                    result = lerp(U, V, s / H);
                 }
-                if (uv.y < 0.0 || uv.y > 1.0)
+                else if (uv.x > 1.0 && uv.x <= 1.0 + H)
                 {
-                    raw.y *= -1.0;
+                	vec4 U = texture2D(sampler, vec2(1.0, uv.y));
+                    vec4 V = vec4(-1.0, -1.0, 1.0, 0.0) * U;
+                	float s = uv.x - 1.0;
+                	result = lerp(U, V, s / H);
                 }
-                return raw;
+                else if (uv.y < 0.0 && uv.y >= -H)
+                {
+                    vec4 U = texture2D(sampler, vec2(uv.x, 0.0));
+                    vec4 V = vec4(-1.0, -1.0, 1.0, 0.0) * U;
+                    float s = -uv.y;
+                    result = lerp(U, V, s / H);
+                }
+                else if (uv.y > 1.0 && uv.y <= 1.0 + H)
+                {
+                    vec4 U = texture2D(sampler, vec2(uv.x, 1.0));
+                    vec4 V = vec4(-1.0, -1.0, 1.0, 0.0) * U;
+                    float s = uv.y - 1.0;
+                    result = lerp(U, V, s / H);
+                }
+                else if (uv.x < 0.0 || uv.x > 1.0 || uv.y < 0.0 || uv.y > 1.0)
+                {
+                    result = vec4(0.0);
+                }
+                else
+                {
+                	result = texture2D(sampler, uv);
+                }
+                return result;
             }
 
             vec4 advect(vec2 uv)
@@ -342,41 +376,58 @@
             }
     </script> 
     <script id="fs3" type="x-shader/fragment">
-            #define TIMESTEP 0.00005
-            #define G -9.81
-            #define H 1.0/256.0
+            #define TIMESTEP 0.0005
+            #define G -1.0
+            #define H 1.0/100.0
         
             uniform vec2 resolution;
             uniform sampler2D sampler;
 
+            vec4 lerp(vec4 a, vec4 b, float t)
+            {
+            	return (1.0 - t) * a + t * b;
+            }
+
             vec4 sample(vec2 uv)
             {
-                vec4 raw = texture2D(sampler, uv);
-                if (uv.x < 0.0)
+            	vec4 result;
+                if (uv.x < 0.0 && uv.x >= -H)
                 {
-                    uv.x += H;
-                    raw = texture2D(sampler, uv);
-                    raw.x *= -1.0;
+                    vec4 U = texture2D(sampler, vec2(0.0, uv.y));
+                    vec4 V = vec4(-1.0, -1.0, 1.0, 0.0) * U;
+                    float s = -uv.x;
+                    result = lerp(U, V, s / H);
                 }
-                if (uv.x > 1.0)
+                else if (uv.x > 1.0 && uv.x <= 1.0 + H)
                 {
-                    uv.x -= H; 
-                    raw = texture2D(sampler, uv);
-                    raw.x *= -1.0;
+                	vec4 U = texture2D(sampler, vec2(1.0, uv.y));
+                    vec4 V = vec4(-1.0, -1.0, 1.0, 0.0) * U;
+                	float s = uv.x - 1.0;
+                	result = lerp(U, V, s / H);
                 }
-                if (uv.y < 0.0)
+                else if (uv.y < 0.0 && uv.y >= -H)
                 {
-                    uv.y += H; 
-                    raw = texture2D(sampler, uv);
-                    raw.y *= -1.0;
+                    vec4 U = texture2D(sampler, vec2(uv.x, 0.0));
+                    vec4 V = vec4(-1.0, -1.0, 1.0, 0.0) * U;
+                    float s = -uv.y;
+                    result = lerp(U, V, s / H);
                 }
-                if (uv.y > 1.0)
+                else if (uv.y > 1.0 && uv.y <= 1.0 + H)
                 {
-                    uv.y -= H;
-                    raw = texture2D(sampler, uv);
-                    raw.y *= -1.0;
+                    vec4 U = texture2D(sampler, vec2(uv.x, 1.0));
+                    vec4 V = vec4(-1.0, -1.0, 1.0, 0.0) * U;
+                    float s = uv.y - 1.0;
+                    result = lerp(U, V, s / H);
                 }
-                return raw;
+                else if (uv.x < 0.0 || uv.x > 1.0 || uv.y < 0.0 || uv.y > 1.0)
+                {
+                    result = vec4(0.0);
+                }
+                else
+                {
+                	result = texture2D(sampler, uv);
+                }
+                return result;
             }
 
             float cenDiff(float f, float b, float eps)
@@ -386,24 +437,23 @@
 
             void main()
             {
-                vec2 EPS = vec2(H, 0.0);
+                vec2 eps = vec2(H, 0.0);
                 vec2 uv = gl_FragCoord.xy / resolution.xy;
                 vec4 U = sample(uv);
 
                 // Forward and backward differences in x and z
-                vec4 Uxf = sample(uv + EPS.xy);
-                vec4 Uxb = sample(uv - EPS.xy);
-                vec4 Uzf = sample(uv + EPS.yx);
-                vec4 Uzb = sample(uv - EPS.yx);
+                vec4 Uxf = sample(uv + eps.xy);
+                vec4 Uxb = sample(uv - eps.xy);
+                vec4 Uzf = sample(uv + eps.yx);
+                vec4 Uzb = sample(uv - eps.yx);
 
-                float u = G * TIMESTEP * cenDiff(Uxf.z, Uxb.z, EPS.x) + U.x;
-                float w = G * TIMESTEP * cenDiff(Uzf.z, Uzb.z, EPS.x) + U.y;
+                float u = G * TIMESTEP * cenDiff(Uxf.z, Uxb.z, eps.x) + U.x;
+                float w = G * TIMESTEP * cenDiff(Uzf.z, Uzb.z, eps.x) + U.y;
 
-                float dudx = cenDiff(Uxf.x, Uxb.x, EPS.x);
-                float dwdz = cenDiff(Uzf.y, Uzb.y, EPS.x);
+                float dudx = cenDiff(Uxf.x, Uxb.x, eps.x);
+                float dwdz = cenDiff(Uzf.y, Uzb.y, eps.x);
                 float h = U.z - TIMESTEP * U.z * (dudx + dwdz);
                 
-                //gl_FragColor = texture2D(sampler, uv);
                 gl_FragColor = vec4(u, w, h, 0.0);
             }
     </script>
@@ -557,8 +607,8 @@
 
             function initFrameBuffers()
             {
-                width = 256;
-                height = 256;
+                width = 100;
+                height = 100;
                 heightFrameBuffer0 = gl.createFramebuffer();
                 gl.bindFramebuffer(gl.FRAMEBUFFER, heightFrameBuffer0);
                 heightFrameBuffer0.width = width;
@@ -653,8 +703,8 @@
                         var x = (i / (h * 0.5)) - 1.0;
                         var z = (j / (w * 0.5)) - 1.0;
                         var t = x * x + z * z;
-                        heightMap[(i * w + j) * 4 + 0] = -1.0;
-                        heightMap[(i * w + j) * 4 + 1] = -1.0;
+                        heightMap[(i * w + j) * 4 + 0] = 0.1;
+                        heightMap[(i * w + j) * 4 + 1] = 0.1;
                         heightMap[(i * w + j) * 4 + 2] = 0.05 * Math.exp(-t) * Math.sin(10.0 * t);
                         heightMap[(i * w + j) * 4 + 3] = 0.0;
                     }
@@ -666,11 +716,11 @@
                 // if (isPowerOf2(w) && isPowerOf2(h)) 
                 // {
                 //     gl.generateMipmap(gl.TEXTURE_2D);
-                // } 
+                // }
                 if (true) 
                 {
-                    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.MIRRORED_REPEAT);
-                    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.MIRRORED_REPEAT);
+                    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+                    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
                     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
                     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
                 }
