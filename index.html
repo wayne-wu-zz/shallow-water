@@ -21,31 +21,36 @@
 <body>
     <canvas></canvas>
     <div id="info"></div>
-    <script id="vs" type="x-shader/vertex">
-            attribute vec3 position;
-            void main() {
-                gl_Position = vec4( position, 1.0 );
-            }
+    <script id="vs0" type="x-shader/vertex">
+        attribute vec3 position;
+
+        void main(){
+            gl_Position = vec4(position, 1.0);
+        }
     </script>
-    <script id="fs0" type="x-shader/fragment">
+    <script id="vs1" type="x-shader/vertex">
             #define EPS 0.01
             #define STEPSIZE 0.01
             #define MAXSTEPS 1000
             #define FREQ 20.0
-            #define AMP 0.05
+            #define AMP 0.005
             #define OVERSTEP 4.0
             #define AIR_IOR 1.0
             #define WATER_IOR 1.33
 
-            uniform float time;
-            uniform vec2 resolution;
-            uniform sampler2D heightSampler;
-            uniform sampler2D wallSampler;
-            uniform vec3 eyeCoordinate;
+            attribute vec3 position;
 
-            vec3 light1 = vec3(2.0, 2.0, 2.0);
-            vec3 light2 = vec3(-2.0, 2.0, -2.0);
-            vec3 light3 = vec3(0.0, 1.0, 0.0);
+            uniform float time;
+            uniform vec3 light1;
+            uniform vec3 light2;
+            uniform vec3 light3;
+
+            varying vec3 start1;
+            varying vec3 end1;
+            varying vec3 start2;
+            varying vec3 end2;
+            varying vec3 start3;
+            varying vec3 end3;
 
             float distBox(vec3 p)
             {
@@ -56,14 +61,142 @@
 
             float sinusoid(float x, float z)
             {
-                float t = x * x * sin(time) + z * z * cos(time);
-                return AMP * exp(-t) * cos(FREQ * t);
+                float t = x * x * sin(time) + z * z * sin(time);
+                return AMP*(sin(FREQ*t) - cos((FREQ/2.0)*t));
             }
 
             float height(float x, float z)
             {
                 vec2 uv = (vec2(x, z) + vec2(1.0)) * 0.5;
-                return texture2D(heightSampler, uv).z;
+                return sinusoid(x, z);
+                // return texture2D(heightSampler, uv).z;
+            }
+
+            vec3 getSurfaceNormal(vec3 p)
+            {
+                vec3 n = vec3(height(p.x - EPS, p.z) - height(p.x + EPS, p.z),
+                              2.0 * EPS,
+                              height(p.x, p.z - EPS) - height(p.x, p.z + EPS));
+                return normalize(n);
+            }
+
+            vec3 getBoxNormal(vec3 p)
+            {
+                vec3 n = vec3((distBox(p+vec3(EPS,0,0))-distBox(p)),
+                              (distBox(p+vec3(0,EPS,0))-distBox(p)),
+                              (distBox(p+vec3(0,0,EPS))-distBox(p)));
+                return normalize(n);
+            }
+
+            vec3 getRefractedDir(vec3 dir, vec3 n)
+			{
+				float costheta = dot(dir, -n);
+				float ratio = AIR_IOR / WATER_IOR;
+				float c = ratio * ratio * (1.0 - costheta * costheta);
+				return ratio * dir + (ratio * costheta - sqrt(1.0 - c)) * n;
+			}
+
+            vec3 getEndPos(vec3 startPos, vec3 lightPos)
+            {
+                // Get the ray direction
+                vec3 dir = normalize(startPos - lightPos);
+                vec3 p = startPos;
+
+                bool hitSurface = false;
+                bool hitBox = false;
+
+                for (int i = 0; i < 50; i++) {
+                    float d = distBox(p);
+                    if(d < EPS)
+                    {
+                        hitBox = true;
+                        break;
+                    }
+                    p += dir * d;
+                }
+
+                if (!hitBox)
+                {
+                    return startPos;
+                }
+                
+                // Approximate the surface point using the plane y = 0
+                float t = -p.y/dir.y;
+                p = p + t*dir;
+                hitSurface = true;
+
+                // Checks if point is outside of surface region
+                /*
+                if (max(p.x, p.z) > 1.0 || min(p.x, p.z) < -1.0)
+                {
+                    return p;
+                }
+                */
+
+                // Calculate the intersection with the floor directly
+                dir = normalize(getRefractedDir(dir, getSurfaceNormal(p)));
+                t = (-1.0-p.y)/dir.y;
+                p = p + t*dir;
+
+                return p; 
+            }
+
+            vec3 remapCoordinate(vec3 pos, vec3 lightPos)
+            {
+                vec3 dir = normalize(pos - lightPos);
+                // Assuming a plane with equation y = 1.5
+                float t = (1.5-lightPos.y)/dir.y;
+                return lightPos + t*dir;
+            }
+
+            void main() {
+                gl_Position = vec4( position, 1.0 );
+                vec3 worldSpacePos = position.xzy;
+
+                start3 = remapCoordinate(worldSpacePos, light3);
+                end3 = getEndPos(start3, light3).xzy;
+                start3 = start3.xzy;
+            }
+    </script>
+    <script id="fs0" type="x-shader/fragment">
+            #define EPS 0.01
+            #define STEPSIZE 0.01
+            #define MAXSTEPS 1000
+            #define FREQ 20.0
+            #define AMP 0.005
+            #define OVERSTEP 4.0
+            #define AIR_IOR 1.0
+            #define WATER_IOR 1.33
+
+            uniform float time;
+            uniform vec2 resolution;
+            uniform sampler2D heightSampler;
+            uniform sampler2D wallSampler;
+            uniform sampler2D causticsSampler;
+            uniform vec3 eyeCoordinate;
+
+            uniform vec3 light1;
+            uniform vec3 light2;
+            uniform vec3 light3;
+
+            float distBox(vec3 p)
+            {
+                vec3 b = vec3(1.0, 1.0, 1.0);
+                vec3 d = abs(p) - b;
+                return min(max(d.x, max(d.y, d.z)), 0.0) + length(max(d, 0.0));
+            }
+
+            float sinusoid(float x, float z)
+            {
+                float t = x * x * sin(time) + z * z * sin(time);
+                return AMP*(sin(FREQ*t) - cos((FREQ/2.0)*t));
+            }
+
+            float height(float x, float z)
+            {
+                vec2 uv = (vec2(x, z) + vec2(1.0)) * 0.5;
+                return sinusoid(x, z);
+                // return texture2D(heightSampler, uv).z;
             }
 
             float height(vec3 p)
@@ -90,6 +223,14 @@
                               2.0 * EPS,
                               height(p.x, p.z - EPS) - height(p.x, p.z + EPS));
                 return normalize(n);
+            }
+
+            float getCaustics(vec3 p)
+            {
+                vec2 uv = (p.xz + vec2(1.0)) * 0.5;
+                vec4 caustics = texture2D(causticsSampler, uv);
+                float intensity = caustics.x;
+                return intensity;
             }
 
             vec4 getCheckerBoard(vec3 p)
@@ -202,7 +343,8 @@
 
                 bool hitBox = false;
                 bool hitSurface = false;
-
+                bool shootingUp = false;
+                
                 // Ray march until we hit the bounding box
                 vec3 p = eye;
                 for (int i = 0; i < 50; i++) {
@@ -229,6 +371,12 @@
                     surfaceColor = shadeWater(eye, p, getBoxNormal(p));
                     hitSurface = true;
                     hitBox = true;
+                    
+                    // If the point is above the eye meaning the ray is shooting up
+                    if (p.y > eye.y)
+                    {
+                        shootingUp = true;
+                    }   
                 }
                 // If the part we hit is above the surface
                 else
@@ -244,8 +392,7 @@
                         }
 
                         // Checks if the ray hits the box from the inside
-                        float d = distBox(p);
-                        if (d >= EPS)
+                        if (distBox(p) >= EPS)
                         {
                             gl_FragColor = vec4(0.0);
                             return;
@@ -257,20 +404,49 @@
 
                 dir = getRefractedDir(dir, hitBox ? getBoxNormal(p) : getSurfaceNormal(p));
 
-                // Step out of the box and step backwards until we hit it
-                p += OVERSTEP * dir;
-                for (int i = 0; i < MAXSTEPS; i++)
+                hitBox = false;
+
+                // If the ray is shooting up, we continue to ray march until we hit a surface
+                if (shootingUp)
                 {
-                    float d = distBox(p);
-                    if (d < EPS)
+                    for (int i = 0; i < MAXSTEPS; i++)
                     {
-                        break;
+                        // When we hit very close to the surface
+                        if (p.y > height(p))
+                        {
+                            // Add the water shade to the existing box shade
+                            surfaceColor += shadeWater(eye, p, getSurfaceNormal(p));
+                            break;
+                        }
+
+                        // Checks if the ray hits the box from the inside
+                        if (distBox(p) >= EPS)
+                        {
+                            hitBox = true;
+                            break;
+                        }
+
+                        p += dir * STEPSIZE;
                     }
-                    p -= dir * d;
+                }
+
+                // Step out of the box and step backwards until we hit it
+                if (!hitBox)
+                {
+                    p += OVERSTEP * dir;
+                    for (int i = 0; i < MAXSTEPS; i++)
+                    {
+                        float d = distBox(p);
+                        if (d < EPS)
+                        {
+                            break;
+                        }
+                        p -= dir * d;
+                    }
                 }
 
                 vec4 wallColor = shadeWall(eye, p, -getBoxNormal(p));
-                gl_FragColor = 0.3 * surfaceColor + 0.5 * wallColor;
+                gl_FragColor = 0.3 * surfaceColor + 0.5 * wallColor + vec4(getCaustics(p)) ;
             }
     </script>
     <script id="fs1" type="x-shader/fragment">
@@ -483,6 +659,24 @@
                 gl_FragColor = vec4(vel, h, 0.0);
             }
     </script>
+    <script id="fs4" type="x-shader/fragment">  
+            varying vec3 start1;
+            varying vec3 end1;
+            varying vec3 start3; 
+            varying vec3 end3;
+
+            float getArea(vec3 pos)
+            {
+                return length(dFdx(pos)) * length(dFdy(pos));
+            }
+
+            void main()
+            {
+                gl_FragColor = vec4(
+                    getArea(start3)/getArea(end3), 
+                    1.0, 1.0, 1.0);
+            }
+    </script> 
     <script>
             window.requestAnimationFrame = window.requestAnimationFrame || (function ()
             {
@@ -501,7 +695,7 @@
                 , vertex_shader, fragment_shader, heightfield_shader
                 , heightProgram
                 , renderProgram
-                , vertex_position
+                , vertex_position = 0
                 , timeLocation
                 , resolutionLocation
                 , frame
@@ -549,10 +743,15 @@
 
             function init()
             {
-                vertex_shader = document.getElementById('vs').textContent;
+                vertex_shader = document.getElementById('vs0').textContent;
                 fragment_shader = document.getElementById('fs0').textContent;
                 heightfield_shader = document.getElementById('fs2').textContent;
                 gravity_shader = document.getElementById('fs3').textContent;
+
+                // Caustics
+                caustics_vs = document.getElementById('vs1').textContent;
+                caustics_fs = document.getElementById('fs4').textContent;
+                
                 canvas = document.querySelector('canvas');
 
                 // Initialise WebGL
@@ -569,11 +768,15 @@
                 // Extensions
                 gl.getExtension('OES_texture_float');
                 gl.getExtension('OES_texture_float_linear');
+                gl.getExtension('OES_standard_derivatives');
 
                 // Create Vertex buffer (2 triangles)
                 buffer = gl.createBuffer();
                 gl.bindBuffer(gl.ARRAY_BUFFER, buffer);
                 gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1.0, -1.0, 1.0, -1.0, -1.0, 1.0, 1.0, -1.0, 1.0, 1.0, -1.0, 1.0]), gl.STATIC_DRAW);
+
+                // Create Buffer for the Light Wavefront 
+                createLightWaveBuffer();
 
                 // Create Frame Buffer for storing the height field
                 initFrameBuffers();
@@ -581,6 +784,7 @@
                 // Create Programs
                 initHeightProgram();
                 initGravityProgram();
+                initCausticsProgram();
                 initRenderProgram();
 
                 wallTexture = loadTexture(gl, "tiles.jpg");
@@ -600,9 +804,52 @@
                 };
             }
 
+            function createLightWaveBuffer()
+            {
+                // Resolution
+                var width = 300;
+                var height = 300;
+                lightWaveVertices = [];
+                
+                for (i = 0; i < height; i++)
+                {
+                    for (j = 0; j < width; j++)
+                    {
+                        var v1x = (i/height)*2 - 1;
+                        var v1y = (j/width)*2 - 1;
+                        var v2x = ((i+1)/height)*2 - 1;
+                        var v2y = ((j+1)/width)*2 - 1;
+                        // Triangle 1
+                        lightWaveVertices.push.apply(lightWaveVertices, [v1x, v1y]);
+                        lightWaveVertices.push.apply(lightWaveVertices, [v1x, v2y]);
+                        lightWaveVertices.push.apply(lightWaveVertices, [v2x, v2y]);
+                        // Triangle 2 
+                        lightWaveVertices.push.apply(lightWaveVertices, [v1x, v1y]);
+                        lightWaveVertices.push.apply(lightWaveVertices, [v2x, v2y]);
+                        lightWaveVertices.push.apply(lightWaveVertices, [v2x, v1y]);
+                    }
+                }
+
+
+                lightWaveBuffer = gl.createBuffer();
+                gl.bindBuffer(gl.ARRAY_BUFFER, lightWaveBuffer);
+                gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(lightWaveVertices), gl.STATIC_DRAW);
+            }
+
+            function initCausticsProgram()
+            {
+                causticsProgram = createProgram(caustics_vs, caustics_fs);
+                causticsUniform = {
+                    timeLocation : gl.getUniformLocation(causticsProgram, 'time')
+                    ,light1 : gl.getUniformLocation(causticsProgram, 'light1')
+                    ,light2 : gl.getUniformLocation(causticsProgram, 'light2')
+                    ,light3 : gl.getUniformLocation(causticsProgram, 'light3')
+                }
+            }
+
             function initGravityProgram()
             {
-                gravityProgram = createProgram(vertex_shader, gravity_shader)
+                gravityProgram = createProgram(vertex_shader, gravity_shader);
                 gravityUniforms = {
                     resolutionLocation : gl.getUniformLocation(gravityProgram, 'resolution')
                     ,samplerLocation : gl.getUniformLocation(gravityProgram, 'sampler')
@@ -617,7 +864,11 @@
                     ,resolutionLocation : gl.getUniformLocation(renderProgram, 'resolution')
                     ,heightSamplerLocation : gl.getUniformLocation(renderProgram, 'heightSampler')
                     ,wallSamplerLocation : gl.getUniformLocation(renderProgram, 'wallSampler')
+                    ,causticsSamperLocation : gl.getUniformLocation(renderProgram, 'causticsSampler')
                     ,eyeCoordinate : gl.getUniformLocation(renderProgram, 'eyeCoordinate')
+                    ,light1 : gl.getUniformLocation(renderProgram, 'light1')
+                    ,light2 : gl.getUniformLocation(renderProgram, 'light2')
+                    ,light3 : gl.getUniformLocation(renderProgram, 'light3')
                 };
             }
 
@@ -651,6 +902,14 @@
                 heightTexture1 = loadFloatTexture(gl, width, height);
                 gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, heightTexture1, 0);
 
+                // Caustics Frame Buffer & Texture
+                causticsFrameBuffer = gl.createFramebuffer();
+                gl.bindFramebuffer(gl.FRAMEBUFFER, causticsFrameBuffer);
+                causticsFrameBuffer.width = 500;
+                causticsFrameBuffer.height = 500;
+                causticsTexture = loadEmptyTexture(gl, causticsFrameBuffer);
+                gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, causticsTexture, 0);
+
                 gl.bindTexture(gl.TEXTURE_2D, null);
                 gl.bindFramebuffer(gl.FRAMEBUFFER, null);
                 frame = 0;
@@ -660,7 +919,7 @@
             {
                 var program = gl.createProgram();
                 var vs = createShader(vertex, gl.VERTEX_SHADER);
-                var fs = createShader('#ifdef GL_ES\nprecision highp float;\n#endif\n\n' + fragment, gl.FRAGMENT_SHADER);
+                var fs = createShader('#extension GL_OES_standard_derivatives : enable\n#ifdef GL_ES\nprecision highp float;\n#endif\n\n' + fragment, gl.FRAGMENT_SHADER);
                 if (vs == null || fs == null) return null;
 
                 gl.attachShader(program, vs);
@@ -695,23 +954,17 @@
                 return shader;
             }
 
-            function loadEmptyTexture(gl)
+            function loadEmptyTexture(gl, framebuffer)
             {
                 const texture = gl.createTexture();
                 gl.bindTexture(gl.TEXTURE_2D, texture);
-                gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, heightFrameBuffer0.width, heightFrameBuffer0.height, 0,
+                gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, framebuffer.width, framebuffer.height, 0,
                             gl.RGBA, gl.FLOAT, null);
-                if (isPowerOf2(heightFrameBuffer0.width) && isPowerOf2(heightFrameBuffer0.height))
-                {
-                    gl.generateMipmap(gl.TEXTURE_2D);
-                } 
-                else 
-                {
-                    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
-                    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
-                    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
-                    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR)
-                }
+
+                gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+                gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+                gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+                gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
                 return texture;
             }
 
@@ -729,8 +982,8 @@
                         var x = (i / (h * 0.5)) - 1.0;
                         var z = (j / (w * 0.5)) - 1.0;
                         var t = x * x + z * z;
-                        heightMap[(i * w + j) * 4 + 0] = Math.cos(x);
-                        heightMap[(i * w + j) * 4 + 1] = Math.sin(z);
+                        heightMap[(i * w + j) * 4 + 0] = Math.sin(x);
+                        heightMap[(i * w + j) * 4 + 1] = Math.cos(z);
                         heightMap[(i * w + j) * 4 + 2] = 0.1 * Math.exp(-t) * Math.sin(10.0 * t);
                         heightMap[(i * w + j) * 4 + 3] = 0.0;
                     }
@@ -907,13 +1160,33 @@
                 
                 gl.bindFramebuffer(gl.FRAMEBUFFER, null);
 
-                // Third Draw Call: Render
+                // Third Draw Call: Caustics
+                gl.useProgram(causticsProgram);
+
+                gl.bindFramebuffer(gl.FRAMEBUFFER, causticsFrameBuffer);
+                gl.viewport(0, 0, causticsFrameBuffer.width, causticsFrameBuffer.height);
+                gl.uniform1f(causticsUniform.timeLocation, parameters.time / 1000);
+                gl.uniform3f(causticsUniform.light1, 2.0, 2.0, 2.0)
+                gl.uniform3f(causticsUniform.light2, -2.0, 2.0, -2.0);
+                gl.uniform3f(causticsUniform.light3, 0.0, 2.0, 0.0);
+
+                gl.bindBuffer(gl.ARRAY_BUFFER, lightWaveBuffer);
+                gl.vertexAttribPointer(vertex_position, 2, gl.FLOAT, false, 0, 0);
+                gl.enableVertexAttribArray(vertex_position);
+                gl.drawArrays(gl.TRIANGLES, 0, lightWaveVertices.length/2);
+                gl.disableVertexAttribArray(vertex_position);
+
+                gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+
+                // Fourth Draw Call: Render
                 gl.useProgram(renderProgram);
 
                 gl.activeTexture(gl.TEXTURE0);
                 gl.bindTexture(gl.TEXTURE_2D, heightTexture1);
                 gl.activeTexture(gl.TEXTURE1);
                 gl.bindTexture(gl.TEXTURE_2D, wallTexture);
+                gl.activeTexture(gl.TEXTURE2);
+                gl.bindTexture(gl.TEXTURE_2D, causticsTexture);
                 
                 gl.viewport(0, 0, parameters.screenWidth, parameters.screenHeight);
 
@@ -922,7 +1195,11 @@
                 gl.uniform2f(renderUniforms.resolutionLocation, parameters.screenWidth, parameters.screenHeight);
                 gl.uniform1i(renderUniforms.heightSamplerLocation, 0);
                 gl.uniform1i(renderUniforms.wallSamplerLocation, 1);
+                gl.uniform1i(renderUniforms.causticsSamperLocation, 2);
                 gl.uniform3f(renderUniforms.eyeCoordinate, eyeCoordinate.radius, eyeCoordinate.phi, eyeCoordinate.theta);
+                gl.uniform3f(renderUniforms.light1, 2.0, 2.0, 2.0);
+                gl.uniform3f(renderUniforms.light2, -2.0, 2.0, -2.0);
+                gl.uniform3f(renderUniforms.light3, 0.0, 2.0, 0.0);
 
                 // Render geometry
                 gl.bindBuffer(gl.ARRAY_BUFFER, buffer);
