@@ -159,80 +159,90 @@
             }
     </script>
     <script id="fs0" type="x-shader/fragment">
-            #define EPS 0.01
-            #define STEPSIZE 0.01
+            #define EPS 0.001
+            #define STEPSIZE 0.001
             #define MAXSTEPS 1000
             #define FREQ 20.0
             #define AMP 0.005
             #define OVERSTEP 4.0
             #define AIR_IOR 1.0
             #define WATER_IOR 1.33
-
+            
             uniform float time;
             uniform vec2 resolution;
             uniform sampler2D heightSampler;
             uniform sampler2D wallSampler;
+            uniform sampler2D skySampler;
             uniform sampler2D causticsSampler;
             uniform vec3 eyeCoordinate;
-
+            
             uniform vec3 light1;
             uniform vec3 light2;
             uniform vec3 light3;
-
-            float distBox(vec3 p)
+            
+            float distBox(vec3 p, vec3 b)
             {
-                vec3 b = vec3(1.0, 1.0, 1.0);
                 vec3 d = abs(p) - b;
                 return min(max(d.x, max(d.y, d.z)), 0.0) + length(max(d, 0.0));
             }
-
+            
+            float distBox(vec3 p)
+            {
+                return distBox(p, vec3(1.0, 0.5, 1.0));
+            }
+            
+            float distWaveBbox(vec3 p)
+            {
+                return distBox(p, vec3(1.0, 0.02, 1.0));
+            }
+            
             float sinusoid(float x, float z)
             {
                 float t = x * x * sin(time) + z * z * sin(time);
                 return AMP*(sin(FREQ*t) - cos((FREQ/2.0)*t));
             }
-
+            
             float height(float x, float z)
             {
                 vec2 uv = (vec2(x, z) + vec2(1.0)) * 0.5;
                 return sinusoid(x, z);
                 // return texture2D(heightSampler, uv).z;
             }
-
+            
             float height(vec3 p)
             {
                 return height(p.x, p.z);
             }
-
+            
             float frac(float x)
             {
                 return x - floor(x);
             }
-
+            
             vec3 getBoxNormal(vec3 p)
             {
                 vec3 n = vec3((distBox(p+vec3(EPS,0,0))-distBox(p)),
-                              (distBox(p+vec3(0,EPS,0))-distBox(p)),
-                              (distBox(p+vec3(0,0,EPS))-distBox(p)));
+                            (distBox(p+vec3(0,EPS,0))-distBox(p)),
+                            (distBox(p+vec3(0,0,EPS))-distBox(p)));
                 return normalize(n);
             }
-
+            
             vec3 getSurfaceNormal(vec3 p)
             {
                 vec3 n = vec3(height(p.x - EPS, p.z) - height(p.x + EPS, p.z),
-                              2.0 * EPS,
-                              height(p.x, p.z - EPS) - height(p.x, p.z + EPS));
+                            2.0 * EPS,
+                            height(p.x, p.z - EPS) - height(p.x, p.z + EPS));
                 return normalize(n);
             }
-
+            
             float getCaustics(vec3 p)
             {
                 vec2 uv = (p.xz + vec2(1.0)) * 0.5;
                 vec4 caustics = texture2D(causticsSampler, uv);
                 float intensity = caustics.x;
-                return intensity;
+                return pow(intensity,2.0)*15.0;
             }
-
+            
             vec4 getCheckerBoard(vec3 p)
             {
                 float numTiles = 20.0;
@@ -241,68 +251,73 @@
                 float z = floor((p.z + 1.0) * 0.5 * numTiles);
                 bool isSame = (frac(x * 0.5) < EPS) == (frac(z * 0.5) < EPS);
                 isSame = (frac(y * 0.5) < EPS) ? isSame : !isSame;
-                return isSame ? vec4(0.0, 0.6, 0.9, 1.0) : vec4(0.1);
+                return isSame ? vec4(0.0, 0.6, 0.9, 1.0) : vec4(0.3);
             }
-
-            vec4 getPic(vec3 p)
+            
+            vec4 getPic(vec3 p, sampler2D sampler)
             {
                 vec2 uv = (p.xz + vec2(1.0)) * 0.5;
-                return texture2D(wallSampler, uv);
+                return texture2D(sampler, uv);
             }
-
+            
             vec3 reflection(vec3 v, vec3 n)
             {
                 return -v + 2.0 * dot(v, n) * n;
             }
-
+            
             float intensity(vec3 eye, vec3 p, vec3 n,
                             float kSpec, float specWeight, float diffWeight)
             {
                 vec3 toLight = normalize(light1 - p);
                 vec3 toEye = normalize(eye - p);
                 vec3 ref = normalize(reflection(toLight, n));
-
+            
                 float diffuse = 0.0;
                 float specular = 0.0;
-
+            
                 // Do diffuse lighting
                 diffuse +=  max(0.0, dot(toLight, n));
                 // Do specular lighting
                 specular += pow(max(dot(ref, toEye), 0.0), kSpec);
-
+            
                 // Recompute for second light
                 toLight = normalize(light2 - p);
                 ref = normalize(reflection(toLight, n));
                 diffuse += max(0.0, dot(toLight, ref));
                 specular += pow(max(dot(ref, toEye), 0.0), kSpec);
-
+            
                 // Recompute for third light
                 toLight = normalize(light3 - p);
                 ref = normalize(reflection(toLight, n));
                 diffuse += max(0.0, dot(toLight, ref));
                 specular += pow(max(dot(ref, toEye), 0.0), kSpec);
-
+            
                 return specWeight * specular + diffWeight * diffuse;
             }
-
-			vec3 getRefractedDir(vec3 dir, vec3 n)
-			{
-				float costheta = dot(dir, -n);
-				float ratio = AIR_IOR / WATER_IOR;
-				float c = ratio * ratio * (1.0 - costheta * costheta);
-				return ratio * dir + (ratio * costheta - sqrt(1.0 - c)) * n;
-			}
-
+            
+            vec3 getRefractedDir(vec3 dir, vec3 n)
+            {
+                float costheta = dot(dir, -n);
+                float ratio = AIR_IOR / WATER_IOR;
+                float c = ratio * ratio * (1.0 - costheta * costheta);
+                return ratio * dir + (ratio * costheta - sqrt(1.0 - c)) * n;
+            }
+            
             vec4 shadeWall(vec3 eye, vec3 p, vec3 normal)
             {
-                return intensity(eye, p, normal, 0.0, 0.0, 1.0) * getPic(p);
+                return 0.5 * intensity(eye, p, normal, 0.0, 0.0, 1.0) * getCheckerBoard(p);
+            }
+            
+            vec4 shadeSky(vec3 p)
+            {
+                return getPic(p, skySampler);
             }
 
             vec4 shadeWater(vec3 eye, vec3 p, vec3 normal)
             {
-                return intensity(eye, p, normal, 50.0, 2.0, 0.0) * vec4(1.0);
+                return intensity(eye, p, normal, 50.0, 2.0, 0.0) * vec4(0.7);
             }
-
+            
             vec3 getCartesian(vec3 sphericalCoord)
             {
                 float radius = sphericalCoord.x;
@@ -314,12 +329,59 @@
                     radius * sin(phi) * sin(theta)
                 );
             }
-
+            
             vec3 getRightVector(vec3 coord)
             {
                 return vec3(sin(coord.z), 0.0, -cos(coord.z));
             }
+            
+            bool outOfBox(vec3 p)
+            {
+                return max(abs(p.x), abs(p.z)) > 1.0;
+            }
+            
+            void makeBlack()
+            {
+                gl_FragColor = vec4(0.0);
+            }
+
+            bool hitBox(inout vec3 p, const vec3 dir)
+            {
+                for (int i = 0; i < 50; i++) 
+                {
+                    float d = p.y < height(p) ? distBox(p) : distWaveBbox(p);
+                    if(d < EPS)
+                    {
+                        return true;
+                    }
+                    p += dir * d;
+                }
+                return false;
+            }
+
+            bool hitSurface(const vec3 dir, const vec3 eye, inout vec3 p, inout vec4 surfaceColor, bool invertNormal)
+            {
+                for (int i = 0; i < MAXSTEPS; i++)
+                {
+                    // When we hit very close to the surface
+                    if (p.y < height(p))
+                    {
+                        vec3 n = invertNormal ? -getSurfaceNormal(p) : getSurfaceNormal(p);
+                        surfaceColor += shadeWater(eye, p, getSurfaceNormal(p));
+                        return true;
+                    }
         
+                    // Checks if the ray hits the box from the inside
+                    if (distWaveBbox(p) >= EPS)
+                    {
+                        return false;
+                    }
+        
+                    p += dir * STEPSIZE;
+                }
+                return true;
+            }
+            
             void main()
             {
                 vec3 eye = getCartesian(eyeCoordinate);
@@ -327,126 +389,87 @@
                 vec3 forward = normalize(focus - eye);
                 vec3 right = normalize(getRightVector(eyeCoordinate));
                 vec3 up = normalize(cross(right, forward));
-
+            
                 float f = 2.0;
                 float u = gl_FragCoord.x * 2.0 / resolution.x - 1.0;
                 float v = gl_FragCoord.y * 2.0 / resolution.y - 1.0;
-
+            
                 float ar = resolution.x / resolution.y;
                 right *= ar;
-
+            
                 vec3 imagePos = eye + right * u + up * v + forward * f;
                 vec3 dir = normalize(imagePos - eye);
-
+            
                 vec4 surfaceColor = vec4(0.0);
                 vec4 boxColor = vec4(0.0);
-
-                bool hitBox = false;
-                bool hitSurface = false;
-                bool shootingUp = false;
-                
-                // Ray march until we hit the bounding box
+                vec4 background = vec4(0.9);
+            
                 vec3 p = eye;
-                for (int i = 0; i < 50; i++) {
-                    float d = distBox(p);
-                    if(d < EPS)
-                    {
-                        hitBox = true;
-                        break;
-                    }
-                    p += dir * d;
-                }
-
-                // If we miss the box we just color in a black background
-                if (!hitBox)
+            
+                if (!hitBox(p, dir))
                 {
-                    gl_FragColor = vec4(0.0);
+                    // If we miss the box we just color in a black background
+                    gl_FragColor = background;
                     return;
                 }
+                
+                vec3 n = vec3(0.0);
+                bool shootingUp = p.y > eye.y; 
 
-                hitBox = false;
                 // If the part we hit is below the surface
                 if (p.y < height(p))
                 {
                     surfaceColor = shadeWater(eye, p, getBoxNormal(p));
-                    hitSurface = true;
-                    hitBox = true;
-                    
-                    // If the point is above the eye meaning the ray is shooting up
-                    if (p.y > eye.y)
-                    {
-                        shootingUp = true;
-                    }   
+                    n = getBoxNormal(p);
                 }
                 // If the part we hit is above the surface
                 else
                 {
-                    for (int i = 0; i < MAXSTEPS; i++)
+                    if (shootingUp)
                     {
-                        // When we hit very close to the surface
-                        if (p.y < height(p))
-                        {
-                            hitSurface = true;
-                            surfaceColor = shadeWater(eye, p, getSurfaceNormal(p));
-                            break;
-                        }
-
-                        // Checks if the ray hits the box from the inside
-                        if (distBox(p) >= EPS)
-                        {
-                            gl_FragColor = vec4(0.0);
-                            return;
-                        }
-
-                        p += dir * STEPSIZE;
+                        gl_FragColor = background;
+                        return;
+                    }
+                        
+                    if (hitSurface(dir, eye, p, surfaceColor, /*invertNormal*/ true))
+                        n = getSurfaceNormal(p);
+                    else
+                    {
+                        gl_FragColor = background;
+                        return;
                     }
                 }
-
-                dir = getRefractedDir(dir, hitBox ? getBoxNormal(p) : getSurfaceNormal(p));
-
-                hitBox = false;
-
-                // If the ray is shooting up, we continue to ray march until we hit a surface
-                if (shootingUp)
-                {
-                    for (int i = 0; i < MAXSTEPS; i++)
-                    {
-                        // When we hit very close to the surface
-                        if (p.y > height(p))
-                        {
-                            // Add the water shade to the existing box shade
-                            surfaceColor += shadeWater(eye, p, getSurfaceNormal(p));
-                            break;
-                        }
-
-                        // Checks if the ray hits the box from the inside
-                        if (distBox(p) >= EPS)
-                        {
-                            hitBox = true;
-                            break;
-                        }
-
-                        p += dir * STEPSIZE;
-                    }
-                }
-
+            
+                // Calculate refraction when hit box or surface
+                dir = getRefractedDir(dir, n);
+            
+                vec4 wallColor = vec4(0.0);
                 // Step out of the box and step backwards until we hit it
-                if (!hitBox)
+                p += OVERSTEP * dir;
+                if (!hitBox(p, -dir))
                 {
-                    p += OVERSTEP * dir;
-                    for (int i = 0; i < MAXSTEPS; i++)
-                    {
-                        float d = distBox(p);
-                        if (d < EPS)
-                        {
-                            break;
-                        }
-                        p -= dir * d;
-                    }
+                    gl_FragColor = background;
+                    return;
                 }
 
-                vec4 wallColor = shadeWall(eye, p, -getBoxNormal(p));
-                gl_FragColor = 0.3 * surfaceColor + 0.5 * wallColor + vec4(getCaustics(p)) ;
+                // If point is still above the surface, we constant raymarch to surface
+                if (p.y > height(p))
+                {
+                    if (!hitSurface(-dir, eye, p, surfaceColor, /*invertNormal*/ false))
+                    {
+                        wallColor = shadeWall(eye, p, -getBoxNormal(p));
+                    }
+                    else
+                    {
+                        wallColor = shadeSky(p);
+                    }
+                }
+                else
+                {
+                    wallColor = shadeWall(eye, p, -getBoxNormal(p)) + vec4(getCaustics(p));
+                }
+                
+                gl_FragColor = 0.3 * surfaceColor + wallColor;
             }
     </script>
     <script id="fs1" type="x-shader/fragment">
@@ -787,7 +810,8 @@
                 initCausticsProgram();
                 initRenderProgram();
 
-                wallTexture = loadTexture(gl, "tiles.jpg");
+                wallTexture = loadTexture(gl, "black.jpg");
+                skyTexture = loadTexture(gl, "tiles.jpg");
 
                 canvas.onmousedown = handleMouseDown;
                 canvas.onmousemove = handleMouseMove;
@@ -864,6 +888,7 @@
                     ,resolutionLocation : gl.getUniformLocation(renderProgram, 'resolution')
                     ,heightSamplerLocation : gl.getUniformLocation(renderProgram, 'heightSampler')
                     ,wallSamplerLocation : gl.getUniformLocation(renderProgram, 'wallSampler')
+                    ,skySamplerLocation : gl.getUniformLocation(renderProgram, 'skySampler')
                     ,causticsSamperLocation : gl.getUniformLocation(renderProgram, 'causticsSampler')
                     ,eyeCoordinate : gl.getUniformLocation(renderProgram, 'eyeCoordinate')
                     ,light1 : gl.getUniformLocation(renderProgram, 'light1')
@@ -1187,6 +1212,8 @@
                 gl.bindTexture(gl.TEXTURE_2D, wallTexture);
                 gl.activeTexture(gl.TEXTURE2);
                 gl.bindTexture(gl.TEXTURE_2D, causticsTexture);
+                gl.activeTexture(gl.TEXTURE3);
+                gl.bindTexture(gl.TEXTURE_2D, skyTexture);
                 
                 gl.viewport(0, 0, parameters.screenWidth, parameters.screenHeight);
 
@@ -1196,6 +1223,7 @@
                 gl.uniform1i(renderUniforms.heightSamplerLocation, 0);
                 gl.uniform1i(renderUniforms.wallSamplerLocation, 1);
                 gl.uniform1i(renderUniforms.causticsSamperLocation, 2);
+                gl.uniform1i(renderUniforms.skySamplerLocation, 3);
                 gl.uniform3f(renderUniforms.eyeCoordinate, eyeCoordinate.radius, eyeCoordinate.phi, eyeCoordinate.theta);
                 gl.uniform3f(renderUniforms.light1, 2.0, 2.0, 2.0);
                 gl.uniform3f(renderUniforms.light2, -2.0, 2.0, -2.0);
