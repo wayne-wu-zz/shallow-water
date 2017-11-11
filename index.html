@@ -37,6 +37,7 @@
             #define OVERSTEP 4.0
             #define AIR_IOR 1.0
             #define WATER_IOR 1.33
+            #define FLOOR_WIDTH 2.0
 
             attribute vec3 position;
 
@@ -167,7 +168,10 @@
             #define OVERSTEP 4.0
             #define AIR_IOR 1.0
             #define WATER_IOR 1.33
-            
+            #define TANK_HEIGHT 0.5
+            #define BBOX_HEIGHT 0.02
+            #define FLOOR_WIDTH 2.0
+
             uniform float time;
             uniform vec2 resolution;
             uniform sampler2D heightSampler;
@@ -175,11 +179,11 @@
             uniform sampler2D skySampler;
             uniform sampler2D causticsSampler;
             uniform vec3 eyeCoordinate;
-            
+
             uniform vec3 light1;
             uniform vec3 light2;
             uniform vec3 light3;
-            
+
             float distBox(vec3 p, vec3 b)
             {
                 vec3 d = abs(p) - b;
@@ -188,12 +192,12 @@
             
             float distBox(vec3 p)
             {
-                return distBox(p, vec3(1.0, 0.5, 1.0));
+                return distBox(p, vec3(1.0, TANK_HEIGHT, 1.0));
             }
             
             float distWaveBbox(vec3 p)
             {
-                return distBox(p, vec3(1.0, 0.02, 1.0));
+                return distBox(p, vec3(1.0, BBOX_HEIGHT, 1.0));
             }
             
             float sinusoid(float x, float z)
@@ -245,13 +249,22 @@
             
             vec4 getCheckerBoard(vec3 p)
             {
-                float numTiles = 20.0;
-                float x = floor((p.x + 1.0) * 0.5 * numTiles);
-                float y = floor((p.y + 1.0) * 0.5 * numTiles);
-                float z = floor((p.z + 1.0) * 0.5 * numTiles);
+                float numTiles = 40.0;
+                float x = floor((p.x + 2.0) * 0.25 * numTiles);
+                float y = floor((p.y + 2.0) * 0.25 * numTiles);
+                float z = floor((p.z + 2.0) * 0.25 * numTiles);
                 bool isSame = (frac(x * 0.5) < EPS) == (frac(z * 0.5) < EPS);
                 isSame = (frac(y * 0.5) < EPS) ? isSame : !isSame;
-                return isSame ? vec4(0.0, 0.6, 0.9, 1.0) : vec4(0.3);
+                return isSame ? vec4(0.1) : vec4(0.9);
+            }
+
+            vec4 getCheckerBoardFlat(vec3 p)
+            {
+                float numTiles = 40.0;
+                float x = floor((p.x + 2.0) * 0.25 * numTiles);
+                float z = floor((p.z + 2.0) * 0.25 * numTiles);
+                bool isSame = (frac(x * 0.5) < EPS) == (frac(z * 0.5) < EPS);
+                return isSame ? vec4(0.1) : vec4(0.9);
             }
             
             vec4 getPic(vec3 p, sampler2D sampler)
@@ -308,6 +321,11 @@
                 return 0.5 * intensity(eye, p, normal, 0.0, 0.0, 1.0) * getCheckerBoard(p);
             }
             
+            vec4 shadeFloor(vec3 eye, vec3 p)
+            {
+                return 0.5 * intensity(eye, p, vec3(0.0, 1.0, 0.0), 0.0, 0.0, 1.0) * getCheckerBoardFlat(p);
+            }
+
             vec4 shadeSky(vec3 p)
             {
                 return getPic(p, skySampler);
@@ -315,7 +333,7 @@
 
             vec4 shadeWater(vec3 eye, vec3 p, vec3 normal)
             {
-                return intensity(eye, p, normal, 50.0, 2.0, 0.0) * vec4(0.7);
+                return intensity(eye, p, normal, 50.0, 2.0, 0.0) * vec4(1.0);
             }
             
             vec3 getCartesian(vec3 sphericalCoord)
@@ -340,9 +358,11 @@
                 return max(abs(p.x), abs(p.z)) > 1.0;
             }
             
-            void makeBlack()
+            bool hitFloor(vec3 p, vec3 dir, inout vec3 floorPos)
             {
-                gl_FragColor = vec4(0.0);
+                float t = (-TANK_HEIGHT - p.y)/dir.y;
+                floorPos = p + t*dir;
+                return max(abs(floorPos.x), abs(floorPos.z)) < FLOOR_WIDTH;
             }
 
             bool hitBox(inout vec3 p, const vec3 dir)
@@ -350,7 +370,7 @@
                 for (int i = 0; i < 50; i++) 
                 {
                     float d = p.y < height(p) ? distBox(p) : distWaveBbox(p);
-                    if(d < EPS)
+                    if (d < EPS)
                     {
                         return true;
                     }
@@ -403,13 +423,20 @@
                 vec4 surfaceColor = vec4(0.0);
                 vec4 boxColor = vec4(0.0);
                 vec4 background = vec4(0.9);
-            
+                vec4 wallColor = background;
+
                 vec3 p = eye;
             
+                vec3 floorPos = vec3(0.0);
+                if (!hitFloor(p, dir, floorPos))
+                {
+                    gl_FragColor = background;
+                    return;
+                }
+
                 if (!hitBox(p, dir))
                 {
-                    // If we miss the box we just color in a black background
-                    gl_FragColor = background;
+                    gl_FragColor = shadeFloor(eye, floorPos);
                     return;
                 }
                 
@@ -435,19 +462,22 @@
                         n = getSurfaceNormal(p);
                     else
                     {
-                        gl_FragColor = background;
+                        vec3 floorPos = vec3(0.0);
+                        gl_FragColor = hitFloor(p, dir, floorPos) ? shadeFloor(eye, floorPos) : background;
                         return;
                     }
                 }
             
                 // Calculate refraction when hit box or surface
+                vec3 air_dir = dir;
                 dir = getRefractedDir(dir, n);
             
-                vec4 wallColor = vec4(0.0);
                 // Step out of the box and step backwards until we hit it
                 p += OVERSTEP * dir;
                 if (!hitBox(p, -dir))
                 {
+                    // Sanity check. This should not happen since it's 
+                    // guaranteed to hit the box at this stage
                     gl_FragColor = background;
                     return;
                 }
@@ -466,10 +496,25 @@
                 }
                 else
                 {
-                    wallColor = shadeWall(eye, p, -getBoxNormal(p)) + vec4(getCaustics(p));
+                    //if hit the side of the box
+                    if (p.y > -TANK_HEIGHT)
+                    {
+                        wallColor = shadeWater(eye, p, -getBoxNormal(p));
+                        vec3 floorPos = vec3(0.0);
+                        if (hitFloor(p, air_dir, floorPos))
+                        {
+                            wallColor += shadeFloor(eye, floorPos);
+                        }
+                    }
+                    //else hit the bottom of the tank
+                    else
+                    {
+                        wallColor = shadeFloor(eye, p) + vec4(getCaustics(p));
+                    }
                 }
                 
-                gl_FragColor = 0.3 * surfaceColor + wallColor;
+                vec4 tint = vec4(0.1, 0.8, 0.9, 1.0);
+                gl_FragColor = 0.3 * (surfaceColor + tint) + wallColor;
             }
     </script>
     <script id="fs1" type="x-shader/fragment">
