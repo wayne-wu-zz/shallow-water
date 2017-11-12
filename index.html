@@ -738,12 +738,20 @@
                 canvas.onmousemove = handleMouseMove;
                 canvas.onmouseup = handleMouseUp;
                 canvas.onwheel = handleWheelScroll;
+                canvas.ontouchstart = ((e) => handleMouseDown(e.touches[0]));
+                canvas.ontouchend = ((e) => handleMouseUp(e.touches[0]));
+                canvas.ontouchmove = ((e) => 
+                    {
+                        handleMouseMove(e.touches[0]);
+                        e.preventDefault();
+                    });
+                canvas.on
 
                 mousedown = false;
                 mouseDownX = null;
                 mouseDownY = null;
                 eyeCoordinate = {
-                    radius : 3,
+                    radius : 4,
                     phi : 0.785, 
                     theta : 0.785
                 };
