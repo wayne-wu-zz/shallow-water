@@ -430,8 +430,7 @@
                 vec3 floorPos = vec3(0.0);
                 if (!hitFloor(p, dir, floorPos))
                 {
-                    gl_FragColor = background;
-                    return;
+                    discard;
                 }
 
                 if (!hitBox(p, dir))
@@ -476,7 +475,7 @@
                 p += OVERSTEP * dir;
                 if (!hitBox(p, -dir))
                 {
-                    // Sanity check. This should not happen since it's 
+                    // Sanity check. This should not happen since its
                     // guaranteed to hit the box at this stage
                     gl_FragColor = background;
                     return;
