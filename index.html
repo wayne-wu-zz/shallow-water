@@ -169,7 +169,7 @@
             #define AIR_IOR 1.0
             #define WATER_IOR 1.33
             #define TANK_HEIGHT 0.5
-            #define BBOX_HEIGHT 0.02
+            #define BBOX_HEIGHT 0.1
             #define FLOOR_WIDTH 2.0
 
             uniform float time;
@@ -209,8 +209,7 @@
             float height(float x, float z)
             {
                 vec2 uv = (vec2(x, z) + vec2(1.0)) * 0.5;
-                return sinusoid(x, z);
-                // return texture2D(heightSampler, uv).z;
+                return texture2D(heightSampler, uv).z;
             }
             
             float height(vec3 p)
@@ -550,180 +549,58 @@
             }
     </script>
     <script id="fs2" type="x-shader/fragment">
-            #define TIMESTEP 0.01
-            #define H 1.0/100.0
-        
+            // Compute heightfields out of fluxes
             uniform float time;
             uniform vec2 resolution;
             uniform sampler2D sampler;
 
-            vec4 lerp(vec4 a, vec4 b, float t)
-            {
-            	return (1.0 - t) * a + t * b;
-            }
-
-            vec4 sample(vec2 uv)
-            {
-            	vec4 result;
-                if (uv.x < 0.0 && uv.x >= -H)
-                {
-                    vec4 U = texture2D(sampler, vec2(0.0, uv.y));
-                    vec4 V = vec4(-1.0, -1.0, 1.0, 0.0) * U;
-                    float s = -uv.x;
-                    result = lerp(U, V, s / H);
-                }
-                else if (uv.x > 1.0 && uv.x <= 1.0 + H)
-                {
-                	vec4 U = texture2D(sampler, vec2(1.0, uv.y));
-                    vec4 V = vec4(-1.0, -1.0, 1.0, 0.0) * U;
-                	float s = uv.x - 1.0;
-                	result = lerp(U, V, s / H);
-                }
-                else if (uv.y < 0.0 && uv.y >= -H)
-                {
-                    vec4 U = texture2D(sampler, vec2(uv.x, 0.0));
-                    vec4 V = vec4(-1.0, -1.0, 1.0, 0.0) * U;
-                    float s = -uv.y;
-                    result = lerp(U, V, s / H);
-                }
-                else if (uv.y > 1.0 && uv.y <= 1.0 + H)
-                {
-                    vec4 U = texture2D(sampler, vec2(uv.x, 1.0));
-                    vec4 V = vec4(-1.0, -1.0, 1.0, 0.0) * U;
-                    float s = uv.y - 1.0;
-                    result = lerp(U, V, s / H);
-                }
-                else if (uv.x < 0.0 || uv.x > 1.0 || uv.y < 0.0 || uv.y > 1.0)
-                {
-                    result = vec4(0.0);
-                }
-                else
-                {
-                	result = texture2D(sampler, uv);
-                }
-                return result;
-            }
-
-            vec4 advect(vec2 uv)
-            {
-                vec2 vel = sample(uv).xy;
-                vel *= -TIMESTEP;
-                uv -= vel;
-                return sample(uv);
-            }
+            #define TIMESTEP 0.5
+            #define H 1.0/resolution.x
 
             void main()
             {
                 vec2 uv = gl_FragCoord.xy / resolution.xy;
-                gl_FragColor = advect(uv);
+                vec2 eps = vec2(H, 0.0);
+                float du = texture2D(sampler, uv + eps.xy).x - texture2D(sampler, uv - eps.xy).x;
+                float dw = texture2D(sampler, uv + eps.yx).y - texture2D(sampler, uv - eps.yx).y;
+
+                float N = texture2D(sampler, uv + eps.yx).z;
+                float S = texture2D(sampler, uv - eps.yx).z;
+                float E = texture2D(sampler, uv + eps.xy).z;
+                float W = texture2D(sampler, uv - eps.xy).z;
+
+                // Do some averaging to eliminate noise
+                float avg = (N + S + E + W) * 0.25;
+                float blend = 0.5;
+                float h = blend * avg +  (1.0 - blend) * texture2D(sampler, uv).z;
+                h -= TIMESTEP * (du + dw);
+
+                vec2 new_speed = texture2D(sampler, uv).xy;
+                gl_FragColor = vec4(new_speed, h, 0.0);
             }
+
     </script> 
     <script id="fs3" type="x-shader/fragment">
-            #define TIMESTEP 0.01
-            #define G -10.0
-            #define H 1.0/100.0
-        
+            // Accelerate velocities based on gravity
             uniform vec2 resolution;
             uniform sampler2D sampler;
 
-            vec4 lerp(vec4 a, vec4 b, float t)
-            {
-            	return (1.0 - t) * a + t * b;
-            }
-
-            vec4 sample(vec2 uv)
-            {
-            	vec4 result;
-                if (uv.x < 0.0 && uv.x >= -H)
-                {
-                    vec4 U = texture2D(sampler, vec2(0.0, uv.y));
-                    vec4 V = vec4(-1.0, -1.0, 1.0, 0.0) * U;
-                    float s = -uv.x;
-                    result = lerp(U, V, s / H);
-                }
-                else if (uv.x > 1.0 && uv.x <= 1.0 + H)
-                {
-                	vec4 U = texture2D(sampler, vec2(1.0, uv.y));
-                    vec4 V = vec4(-1.0, -1.0, 1.0, 0.0) * U;
-                	float s = uv.x - 1.0;
-                	result = lerp(U, V, s / H);
-                }
-                else if (uv.y < 0.0 && uv.y >= -H)
-                {
-                    vec4 U = texture2D(sampler, vec2(uv.x, 0.0));
-                    vec4 V = vec4(-1.0, -1.0, 1.0, 0.0) * U;
-                    float s = -uv.y;
-                    result = lerp(U, V, s / H);
-                }
-                else if (uv.y > 1.0 && uv.y <= 1.0 + H)
-                {
-                    vec4 U = texture2D(sampler, vec2(uv.x, 1.0));
-                    vec4 V = vec4(-1.0, -1.0, 1.0, 0.0) * U;
-                    float s = uv.y - 1.0;
-                    result = lerp(U, V, s / H);
-                }
-                else if (uv.x < 0.0 || uv.x > 1.0 || uv.y < 0.0 || uv.y > 1.0)
-                {
-                    result = vec4(0.0);
-                }
-                else
-                {
-                	result = texture2D(sampler, uv);
-                }
-                return result;
-            }
-
-            float cenDiff(float f, float b, float eps)
-            {
-                return (f - b) / (2.0 * eps);
-            }
+            #define TIMESTEP 0.5
+            #define G 1.0
+            #define H 1.0/resolution.x
 
             void main()
             {
-                vec2 eps = vec2(H, 0.0);
                 vec2 uv = gl_FragCoord.xy / resolution.xy;
-                vec4 U = sample(uv);
+                vec2 eps = vec2(H, 0.0);
+                float dhdx = texture2D(sampler, uv + eps.xy).z - texture2D(sampler, uv - eps.xy).z;
+                float dhdz = texture2D(sampler, uv + eps.yx).z - texture2D(sampler, uv - eps.yx).z;
+                vec2 delh = vec2(dhdx, dhdz);
 
-                // Forward and backward differences in x and z
-                vec4 Uxf = sample(uv + eps.xy);
-                vec4 Uxb = sample(uv - eps.xy);
-                vec4 Uzf = sample(uv + eps.yx);
-                vec4 Uzb = sample(uv - eps.yx);
+                vec2 v = texture2D(sampler, uv).xy - TIMESTEP * G * delh;
+                float h = texture2D(sampler, uv).z;
 
-                // Compute velocities at the faces
-                vec4 n = sample(uv + eps.yx);
-                vec4 s = sample(uv - eps.yx);
-                vec4 e = sample(uv + eps.xy);
-                vec4 w = sample(uv - eps.xy);
-                vec2 avgn = (n.xy + U.xy) * 0.5;
-                vec2 avgs = (s.xy + U.xy) * 0.5;
-                vec2 avge = (e.xy + U.xy) * 0.5;
-                vec2 avgw = (w.xy + U.xy) * 0.5;
-
-                // Compute pressures at the corners
-                float pne = sample(uv + eps.xx * 0.5).z;
-                float pnw = sample(uv - eps.xy * 0.5 + eps.yx * 0.5).z;
-                float pse = sample(uv + eps.xy * 0.5 - eps.yx * 0.5).z;
-                float psw = sample(uv - eps.xx * 0.5).z;
-
-                // Compute pressure gradients at faces
-                vec2 pgn = vec2(pne - pnw, n.z - U.z) / H;
-                vec2 pgs = vec2(pse - psw, U.z - s.z) / H;
-                vec2 pge = vec2(e.z - U.z, pne - pse) / H;
-                vec2 pgw = vec2(U.z - w.z, pnw - psw) / H;
-
-                avgn += TIMESTEP * G * pgn;
-                avgs += TIMESTEP * G * pgs;
-                avge += TIMESTEP * G * pge;
-                avgw += TIMESTEP * G * pgw;
-
-                vec2 vel = (avgn + avgs + avge + avgw) * 0.25;
-
-                float dudx = cenDiff(Uxf.x, Uxb.x, eps.x);
-                float dwdz = cenDiff(Uzf.y, Uzb.y, eps.x);
-                float h = U.z - TIMESTEP * U.z * (dudx + dwdz);
-                
-                gl_FragColor = vec4(vel, h, 0.0);
+                gl_FragColor = vec4(v, h, 0.0);
             }
     </script>
     <script id="fs4" type="x-shader/fragment">  
@@ -1051,9 +928,12 @@
                         var x = (i / (h * 0.5)) - 1.0;
                         var z = (j / (w * 0.5)) - 1.0;
                         var t = x * x + z * z;
-                        heightMap[(i * w + j) * 4 + 0] = Math.sin(x);
-                        heightMap[(i * w + j) * 4 + 1] = Math.cos(z);
-                        heightMap[(i * w + j) * 4 + 2] = 0.1 * Math.exp(-t) * Math.sin(10.0 * t);
+                        heightMap[(i * w + j) * 4 + 0] = 0.0;
+                        heightMap[(i * w + j) * 4 + 1] = 0.0;
+                        if (t < 0.3)
+                            heightMap[(i * w + j) * 4 + 2] = 0.09 * Math.sin(50.0 * t);
+                        else
+                            heightMap[(i * w + j) * 4 + 2] = 0.0;
                         heightMap[(i * w + j) * 4 + 3] = 0.0;
                     }
                 }   
