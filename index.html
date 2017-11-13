@@ -41,6 +41,7 @@
 
             attribute vec3 position;
 
+            uniform sampler2D heightSampler;
             uniform float time;
             uniform vec3 light1;
             uniform vec3 light2;
@@ -69,8 +70,7 @@
             float height(float x, float z)
             {
                 vec2 uv = (vec2(x, z) + vec2(1.0)) * 0.5;
-                return sinusoid(x, z);
-                // return texture2D(heightSampler, uv).z;
+                return texture2D(heightSampler, uv).z;
             }
 
             vec3 getSurfaceNormal(vec3 p)
@@ -794,6 +794,7 @@
                 causticsProgram = createProgram(caustics_vs, caustics_fs);
                 causticsUniform = {
                     timeLocation : gl.getUniformLocation(causticsProgram, 'time')
+                    ,heightSamplerLocation : gl.getUniformLocation(causticsProgram, 'heightSampler')
                     ,light1 : gl.getUniformLocation(causticsProgram, 'light1')
                     ,light2 : gl.getUniformLocation(causticsProgram, 'light2')
                     ,light3 : gl.getUniformLocation(causticsProgram, 'light3')
@@ -1122,7 +1123,12 @@
 
                 gl.bindFramebuffer(gl.FRAMEBUFFER, causticsFrameBuffer);
                 gl.viewport(0, 0, causticsFrameBuffer.width, causticsFrameBuffer.height);
+
+                gl.activeTexture(gl.TEXTURE0);
+                gl.bindTexture(gl.TEXTURE_2D, heightTexture1);
+
                 gl.uniform1f(causticsUniform.timeLocation, parameters.time / 1000);
+                gl.uniform1i(causticsUniform.heightSamplerLocation, 0);
                 gl.uniform3f(causticsUniform.light1, 2.0, 2.0, 2.0)
                 gl.uniform3f(causticsUniform.light2, -2.0, 2.0, -2.0);
                 gl.uniform3f(causticsUniform.light3, 0.0, 2.0, 0.0);
