@@ -335,6 +335,12 @@
                 return intensity(eye, p, normal, 50.0, 2.0, 0.0) * vec4(1.0);
             }
             
+            float getFresnel(vec3 n, vec3 eye, vec3 p)
+            {
+                vec3 toEye = normalize(eye - p);
+                return dot(n, toEye);
+            }
+
             vec3 getCartesian(vec3 sphericalCoord)
             {
                 float radius = sphericalCoord.x;
@@ -425,6 +431,7 @@
                 vec4 wallColor = background;
 
                 vec3 p = eye;
+                vec3 surfaceIntersection;
             
                 vec3 floorPos = vec3(0.0);
                 if (!hitFloor(p, dir, floorPos))
@@ -472,6 +479,7 @@
                 // Calculate refraction when hit box or surface
                 vec3 air_dir = dir;
                 dir = getRefractedDir(dir, n);
+                surfaceIntersection = p;
             
                 // Step out of the box and step backwards until we hit it
                 p += OVERSTEP * dir;
@@ -504,12 +512,12 @@
                     //else hit the bottom of the tank
                     else
                     {
-                        wallColor = shadeFloor(eye, p) + vec4(getCaustics(p));
+                        wallColor = 0.8 * shadeFloor(eye, p) + vec4(getCaustics(p));
                     }
                 }
-                
-                vec4 tint = 0.5 * vec4(0.1, 0.8, 0.9, 1.0);
-                gl_FragColor = 0.3 * (surfaceColor + tint) + wallColor;
+
+                float fresnel = getFresnel(n, eye, surfaceIntersection);
+                gl_FragColor = (1.0 - fresnel) * surfaceColor + (fresnel + 0.3) * wallColor;
             }
     </script>
     <script id="fs1" type="x-shader/fragment">
