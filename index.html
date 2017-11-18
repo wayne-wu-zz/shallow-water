@@ -444,8 +444,8 @@
                 // If the part we hit is below the surface
                 if (p.y < height(p))
                 {
-                    surfaceColor = shadeWater(eye, p, getBoxNormal(p));
                     n = getBoxNormal(p);
+                    surfaceColor = shadeWater(eye, p, n);
                 }
                 // If the part we hit is above the surface
                 else
@@ -456,40 +456,37 @@
                         return;
                     }
                         
-                    if (hitSurface(dir, eye, p, surfaceColor, /*invertNormal*/ true))
+                    if (hitSurface(dir, eye, p, surfaceColor, false))
+                    {
                         n = getSurfaceNormal(p);
+                    }
                     else
                     {
                         vec3 floorPos = vec3(0.0);
-                        gl_FragColor = hitFloor(p, dir, floorPos) ? shadeFloor(eye, floorPos) : background;
+                        gl_FragColor = hitFloor(p, dir, floorPos) ? shadeFloor(eye, floorPos) :
+                                                                    background;
                         return;
                     }
                 }
-            
+
                 // Calculate refraction when hit box or surface
                 vec3 air_dir = dir;
                 dir = getRefractedDir(dir, n);
             
                 // Step out of the box and step backwards until we hit it
                 p += OVERSTEP * dir;
-                if (!hitBox(p, -dir))
-                {
-                    // Sanity check. This should not happen since its
-                    // guaranteed to hit the box at this stage
-                    gl_FragColor = background;
-                    return;
-                }
+                hitBox(p, -dir);
 
                 // If point is still above the surface, we constant raymarch to surface
                 if (p.y > height(p))
                 {
-                    if (!hitSurface(-dir, eye, p, surfaceColor, /*invertNormal*/ false))
+                    if (!hitSurface(-dir, eye, p, surfaceColor, false))
                     {
                         wallColor = shadeWall(eye, p, -getBoxNormal(p));
                     }
                     else
                     {
-                        wallColor = shadeSky(p);
+                        wallColor = 0.1 * shadeSky(p);
                     }
                 }
                 else
@@ -511,7 +508,7 @@
                     }
                 }
                 
-                vec4 tint = vec4(0.1, 0.8, 0.9, 1.0);
+                vec4 tint = 0.5 * vec4(0.1, 0.8, 0.9, 1.0);
                 gl_FragColor = 0.3 * (surfaceColor + tint) + wallColor;
             }
     </script>
