@@ -301,7 +301,7 @@ void main()
             return;
         }
             
-        if (hitSurface(dir, eye, p, surfaceColor, false))
+        if (hitSurface(dir, eye, p, surfaceColor, true))
         {
             n = getSurfaceNormal(p);
         }

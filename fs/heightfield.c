@@ -64,10 +64,11 @@ void main()
     vec2 uv = gl_FragCoord.xy / resolution.xy;
     
     vec2 pos = uv * 2.0 - vec2(1.0);
-    if (mouseHit == 1 && withinRadius(uv))
+    if (mouseHit == 1 && withinRadius(uv)) 
     {
-        float h = HITDEPTH;
-        gl_FragColor = vec4(0.0, 0.0, h, 0.0);
+        //float t = pos.x*pos.x + pos.y*pos.y;
+        //float h = -HITDEPTH*cos(t);
+        gl_FragColor = vec4(0.0, 0.0, HITDEPTH, 0.0);
         return;
     }
 
@@ -87,5 +88,5 @@ void main()
     h -= TIMESTEP * (du + dw);
 
     vec2 new_speed = texture2D(sampler, uv).xy;
-    gl_FragColor = vec4(new_speed, h, 0.0);
+    gl_FragColor = vec4(new_speed, 0.99*h, 0.0);
 }
