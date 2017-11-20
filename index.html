@@ -251,7 +251,9 @@
                 gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, heightTexture0, 0);
                 if (gl.checkFramebufferStatus(gl.FRAMEBUFFER) != gl.FRAMEBUFFER_COMPLETE)
                 {
-                    hightTexture0 = loadFloatTexture(gl, 512, 512, false);
+                    heightFrameBuffer0.width = 512;
+                    heightFrameBuffer0.height = 512;
+                    heightTexture0 = loadFloatTexture(gl, 512, 512, false);
                     gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, heightTexture0, 0);
                 }
 
@@ -264,7 +266,9 @@
                 gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, heightTexture1, 0);
                 if (gl.checkFramebufferStatus(gl.FRAMEBUFFER) != gl.FRAMEBUFFER_COMPLETE)
                 {
-                    hightTexture1 = loadFloatTexture(gl, 512, 512, false);
+                    heightFrameBuffer1.width = 512;
+                    heightFrameBuffer1.height = 512;
+                    heightTexture1 = loadFloatTexture(gl, 512, 512, false);
                     gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, heightTexture1, 0);
                 }
 
