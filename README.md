@@ -1,4 +1,4 @@
-# Shallow Water Simulation
+# Shallow Water
 An interactive demo of shallow water implemented in WebGL. The rendering and (almost physical) simulation is all done in GLSL. Our renderer features refraction, lighting, and caustics.
 
 [Click Here](https://wayne-wu.github.io/shallow-water/) to try it out.
