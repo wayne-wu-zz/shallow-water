@@ -3,4 +3,7 @@ A (almost physical) simulation of shallow water implemented in WebGL. Rendered i
 
 [Click Here](https://wayne-wu.github.io/shallow-water/) to try it out.
 
+Screenshot:
+![Screenshot](Shallow.jpg?raw=true)
+
 Developed by [Wayne Wu](https://github.com/wayne-wu) and [Kyle Fung](https://github.com/KyleFung)
